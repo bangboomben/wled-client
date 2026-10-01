@@ -1,15 +1,17 @@
 // Erzeugt die Screenshots für die README aus simulierten Geräten (keine echten Daten).
-//   npm run build && node scripts/screenshots.mjs
-// Ergebnis: docs/screenshots/*.png
+//   npm run build && node scripts/screenshots.mjs           → docs/screenshots/*.png
+//   npm run build && node scripts/screenshots.mjs --demo    → docs/demo.gif + docs/demo.mp4 (braucht ffmpeg)
 
-import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright-core';
 
 const OUT = 'docs/screenshots';
+const DEMO = process.argv.includes('--demo');
 mkdirSync(OUT, { recursive: true });
+const videoDir = DEMO ? mkdtempSync(path.join(tmpdir(), 'wled-client-video-')) : null;
 
 const DEVICES = [
   { port: 19181, fixture: 'desk', name: 'Desk' },
@@ -63,11 +65,15 @@ writeFileSync(
 );
 writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'en' }));
 
+const launchedAt = Date.now();
 const app = await electron.launch({
   args: ['.'],
   env: { ...process.env, WLED_CLIENT_USER_DATA: userData, WLED_CLIENT_KEEP_FLYOUT: '1' },
   colorScheme: 'dark',
+  ...(DEMO ? { recordVideo: { dir: videoDir, size: { width: 1220, height: 820 } } } : {}),
 });
+let demoStart = 0;
+let video = null;
 
 try {
   await new Promise((r) => setTimeout(r, 1500));
@@ -84,6 +90,19 @@ try {
     await win.waitForTimeout(1500);
   };
 
+  if (DEMO) {
+    video = win.video();
+    demoStart = await recordDemo(win, select);
+  } else {
+    await shoot(win, fly, select);
+  }
+} finally {
+  await app.close().catch(() => {});
+  mock.kill();
+  rmSync(userData, { recursive: true, force: true });
+}
+
+async function shoot(win, fly, select) {
   await select('Desk', 'effects');
   await win.waitForFunction(() => document.querySelectorAll('.pal-bar').length > 20);
   await win.waitForTimeout(1200);
@@ -112,8 +131,111 @@ try {
   await fly.waitForTimeout(800);
   await fly.screenshot({ path: path.join(OUT, 'tray.png') });
   console.log(`Screenshots in ${OUT}/`);
-} finally {
-  await app.close().catch(() => {});
-  mock.kill();
-  rmSync(userData, { recursive: true, force: true });
+}
+
+if (DEMO && video) {
+  const src = await video.path();
+  const trim = Math.max(0, (demoStart - launchedAt) / 1000 - 0.2).toFixed(2);
+  const ff = (args) => execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...args], { stdio: 'inherit' });
+  ff(['-ss', trim, '-i', src, '-vf', 'fps=30,scale=1220:-2:flags=lanczos', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-movflags', '+faststart', 'docs/demo.mp4']);
+  ff([
+    '-ss', trim, '-i', src,
+    '-vf', 'fps=12,scale=860:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle',
+    'docs/demo.gif',
+  ]);
+  rmSync(videoDir, { recursive: true, force: true });
+  const mb = (f) => (statSync(f).size / 1048576).toFixed(1);
+  console.log(`Demo: docs/demo.gif (${mb('docs/demo.gif')} MB), docs/demo.mp4 (${mb('docs/demo.mp4')} MB)`);
+}
+
+/** Kurzer Rundgang mit sichtbarem Mauszeiger. Gibt den Startzeitpunkt zurück (zum Zuschneiden). */
+async function recordDemo(win, select) {
+  const pause = (ms) => win.waitForTimeout(ms);
+  await select('Desk', 'effects');
+  await win.waitForFunction(() => document.querySelectorAll('.pal-bar').length > 20);
+  // Die Videoaufnahme zeigt keinen Mauszeiger — ein eigener Punkt folgt der Maus.
+  await win.evaluate(() => {
+    const c = document.createElement('div');
+    Object.assign(c.style, {
+      position: 'fixed', left: '-40px', top: '-40px', width: '20px', height: '20px', margin: '-10px 0 0 -10px',
+      borderRadius: '50%', background: 'rgba(255,255,255,.9)', pointerEvents: 'none', zIndex: '99999',
+      boxShadow: '0 0 0 2px rgba(0,0,0,.45), 0 3px 10px rgba(0,0,0,.5)', transition: 'transform .1s',
+    });
+    document.body.appendChild(c);
+    addEventListener('mousemove', (e) => { c.style.left = `${e.clientX}px`; c.style.top = `${e.clientY}px`; }, true);
+    addEventListener('mousedown', () => { c.style.transform = 'scale(.65)'; }, true);
+    addEventListener('mouseup', () => { c.style.transform = ''; }, true);
+  });
+  const center = async (sel, fx = 0.5, fy = 0.5) => {
+    const b = await win.locator(sel).first().boundingBox();
+    return [b.x + b.width * fx, b.y + b.height * fy];
+  };
+  const glide = async (sel, fx, fy, steps = 22) => {
+    const [x, y] = await center(sel, fx, fy);
+    await win.mouse.move(x, y, { steps });
+  };
+  const tap = async (sel, fx, fy) => {
+    await glide(sel, fx, fy);
+    await pause(120);
+    await win.mouse.down();
+    await win.mouse.up();
+  };
+  const drag = async (sel, from, to, fy = 0.5) => {
+    await glide(sel, from, fy);
+    await win.mouse.down();
+    const [x] = await center(sel, to, fy);
+    const [, y] = await center(sel, from, fy);
+    await win.mouse.move(x, y, { steps: 30 });
+    await win.mouse.up();
+  };
+
+  await win.mouse.move(760, 520);
+  const start = Date.now();
+  await pause(1300);
+
+  // Effekt suchen und wählen
+  await tap('.fx-layout .search input');
+  await win.keyboard.type('aurora', { delay: 110 });
+  await pause(250);
+  await tap('.list-item:has-text("Aurora")');
+  await pause(1200);
+  // Palette wechseln
+  await tap('.fx-side .search input');
+  await win.keyboard.type('ocean', { delay: 110 });
+  await pause(250);
+  await tap('.pal-item:has-text("Ocean")', 0.5, 0.7);
+  await pause(1200);
+  // Helligkeit ziehen
+  await drag('.hero .slider', 0.82, 0.3);
+  await pause(300);
+  await drag('.hero .slider', 0.3, 0.95);
+  await pause(900);
+
+  // Gerät wechseln, Farbe wählen
+  await tap('.device-row:has-text("TV Wall") .device-name');
+  await pause(700);
+  await tap('.tab[data-tab="colors"]');
+  await pause(700);
+  const [cx, cy] = await center('.wheel');
+  const r = 95;
+  await win.mouse.move(cx + r * Math.cos(-1.4), cy + r * Math.sin(-1.4), { steps: 20 });
+  await win.mouse.down();
+  for (let a = -1.4; a <= 1.6; a += 0.06) await win.mouse.move(cx + r * Math.cos(a), cy + r * Math.sin(a), { steps: 2 });
+  await win.mouse.up();
+  await pause(1000);
+
+  // Schnellzugriff in der Seitenleiste
+  await drag('.device-row:has-text("Bedroom") .slider', 0.27, 0.85);
+  await pause(500);
+  await tap('.device-row:has-text("Kitchen") .toggle');
+  await pause(900);
+
+  // Preset anwenden
+  await tap('.device-row:has-text("Desk") .device-name');
+  await pause(500);
+  await tap('.tab[data-tab="presets"]');
+  await pause(600);
+  await tap('.preset-card:has-text("Party") .preset-main');
+  await pause(1800);
+  return start;
 }

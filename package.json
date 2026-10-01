@@ -1,7 +1,7 @@
 {
   "name": "wled-client",
   "productName": "WLED Client",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Unofficial Windows desktop client for WLED: switch between devices, colors, effects, palettes, segments, presets and a tray quick-access with brightness sliders.",
   "author": "bangboomben",
   "license": "EUPL-1.2",
@@ -23,9 +23,10 @@
     "mock": "node --no-warnings scripts/mock-wled.mjs",
     "e2e": "node scripts/e2e.mjs",
     "screenshots": "node scripts/screenshots.mjs",
+    "demo": "node scripts/screenshots.mjs --demo",
     "i18n": "node --no-warnings scripts/i18n-check.mjs",
     "icons": "python scripts/make-icons.py",
-    "dist": "node scripts/build.mjs && electron-builder --win nsis"
+    "dist": "node scripts/build.mjs && electron-builder --win nsis --publish never"
   },
   "build": {
     "appId": "io.github.bangboomben.wled-client",
@@ -43,6 +44,14 @@
       "LICENSE"
     ],
     "asar": true,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "bangboomben",
+        "repo": "wled-client",
+        "releaseType": "release"
+      }
+    ],
     "win": {
       "target": [
         {
@@ -79,6 +88,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9",
     "esbuild": "^0.28.2",
     "playwright-core": "^1.63.0",
     "react": "^19.3.0",

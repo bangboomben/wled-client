@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { key, t } from '../../shared/i18n';
-import type { DeviceSnapshot, LanguageSetting, ThemeMode } from '../../shared/types';
-import { store, useDevices, useScan, useSettings, wled } from '../lib/store';
+import type { DeviceSnapshot, LanguageSetting, ThemeMode, UpdateState } from '../../shared/types';
+import { store, useDevices, useScan, useSettings, useUpdate, wled } from '../lib/store';
 import { formatUptime } from '../lib/wled';
 import { Modal, Toggle, toast } from './controls';
 import { Icon } from './Icon';
@@ -353,6 +353,55 @@ export function AppSettingsDialog({ onClose }: { onClose: () => void }) {
         </div>
         <Toggle checked={s.liveView} label={t('Live-Vorschau')} onChange={(v) => set({ liveView: v })} />
       </div>
+      <UpdateSettings autoUpdate={s.autoUpdate} onAutoUpdate={(v) => set({ autoUpdate: v })} />
     </Modal>
+  );
+}
+
+function updateText(u: UpdateState): string {
+  switch (u.status) {
+    case 'unsupported':
+      return t('Updates gibt es nur in der installierten App.');
+    case 'checking':
+      return t('Suche nach Updates …');
+    case 'latest':
+      return t('Version {current} ist aktuell.', { current: u.current });
+    case 'downloading':
+      return t('Lade Version {version} … {progress} %', { version: u.version ?? '', progress: u.progress ?? 0 });
+    case 'ready':
+      return t('Version {version} ist bereit und wird beim nächsten Beenden installiert.', { version: u.version ?? '' });
+    case 'error':
+      return t('Update-Prüfung fehlgeschlagen: {error}', { error: u.error ?? '' });
+    default:
+      return t('Installiert: Version {current}', { current: u.current });
+  }
+}
+
+function UpdateSettings({ autoUpdate, onAutoUpdate }: { autoUpdate: boolean; onAutoUpdate: (v: boolean) => void }) {
+  const u = useUpdate();
+  const supported = u.status !== 'unsupported';
+  return (
+    <div className="setting-row update-row">
+      <div>
+        <strong>{t('Automatisch nach Updates suchen')}</strong>
+        <p className="muted small">{updateText(u)}</p>
+        {supported && (
+          <div className="row-actions">
+            {u.status === 'ready' ? (
+              <button className="btn primary small" onClick={() => wled.installUpdate()}>
+                <Icon name="refresh" size={14} />
+                {t('Neu starten und aktualisieren')}
+              </button>
+            ) : (
+              <button className="btn small" disabled={u.status === 'checking' || u.status === 'downloading'} onClick={() => wled.checkForUpdates()}>
+                <Icon name="search" size={14} />
+                {t('Jetzt prüfen')}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <Toggle checked={autoUpdate} disabled={!supported} label={t('Automatisch nach Updates suchen')} onChange={onAutoUpdate} />
+    </div>
   );
 }

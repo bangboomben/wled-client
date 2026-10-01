@@ -1897,3 +1897,38 @@ body.is-flyout #root {
     height: 420px;
   }
 }
+
+/* ------------------------------------------------------------------ Update-Hinweis */
+
+.update-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 10px 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+}
+
+.update-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.update-card .btn {
+  justify-content: center;
+}
+
+.update-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.update-row .row-actions {
+  margin-top: 8px;
+}

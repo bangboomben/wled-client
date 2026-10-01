@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   liveView: false,
   theme: 'system',
   language: 'system',
+  autoUpdate: true,
 };
 
 function readJson<T>(file: string, fallback: T): T {

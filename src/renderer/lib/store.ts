@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { resolveLanguage, setLanguage } from '../../shared/i18n';
 import { applyStatePatch } from '../../shared/merge';
-import type { AppSettings, DeviceSnapshot, DeviceStatic, PalxEntry, ScanProgress, WledBridge } from '../../shared/types';
+import type { AppSettings, DeviceSnapshot, DeviceStatic, PalxEntry, ScanProgress, UpdateState, WledBridge } from '../../shared/types';
 
 declare global {
   interface Window {
@@ -15,7 +15,15 @@ type Listener = () => void;
 
 class AppStore {
   devices: DeviceSnapshot[] = [];
-  settings: AppSettings = { closeToTray: true, startWithWindows: false, liveView: false, theme: 'system', language: 'system' };
+  settings: AppSettings = {
+    closeToTray: true,
+    startWithWindows: false,
+    liveView: false,
+    theme: 'system',
+    language: 'system',
+    autoUpdate: true,
+  };
+  update: UpdateState = { status: 'unsupported', current: '' };
   scan: ScanProgress = { running: false, done: 0, total: 0, found: [] };
   version = '';
   ready = false;
@@ -27,6 +35,7 @@ class AppStore {
     this.settings = snap.settings;
     this.applyLanguage();
     this.version = snap.version;
+    this.update = snap.update;
     this.ready = true;
     wled.onDevices((list) => {
       this.devices = list;
@@ -43,6 +52,10 @@ class AppStore {
     wled.onSettings((s) => {
       this.settings = s;
       this.applyLanguage();
+      this.emit();
+    });
+    wled.onUpdate((u) => {
+      this.update = u;
       this.emit();
     });
     wled.onScan((p) => {
@@ -102,6 +115,7 @@ export const useDevices = () => useSyncExternalStore(store.subscribe, () => stor
 export const useSettings = () => useSyncExternalStore(store.subscribe, () => store.settings);
 export const useScan = () => useSyncExternalStore(store.subscribe, () => store.scan);
 export const useReady = () => useSyncExternalStore(store.subscribe, () => store.ready);
+export const useUpdate = () => useSyncExternalStore(store.subscribe, () => store.update);
 
 // Statische Gerätedaten (Effekte, Paletten, Presets) — zwischengespeichert pro Revision.
 const staticCache = new Map<string, { rev: number; data: DeviceStatic }>();

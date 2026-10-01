@@ -169,6 +169,7 @@ export interface AppSettings {
   liveView: boolean;
   theme: ThemeMode;
   language: LanguageSetting;
+  autoUpdate: boolean;
   selectedId?: string;
   trayHintShown?: boolean;
 }
@@ -209,10 +210,21 @@ export interface CommandResult {
   error?: string;
 }
 
+export type UpdateStatus = 'unsupported' | 'idle' | 'checking' | 'latest' | 'downloading' | 'ready' | 'error';
+
+export interface UpdateState {
+  status: UpdateStatus;
+  current: string;
+  version?: string;
+  progress?: number;
+  error?: string;
+}
+
 export interface Snapshot {
   devices: DeviceSnapshot[];
   settings: AppSettings;
   version: string;
+  update: UpdateState;
 }
 
 /** Was das Preload-Skript als window.wled bereitstellt. */
@@ -241,6 +253,9 @@ export interface WledBridge {
   getSettings(): Promise<AppSettings>;
   setSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
   onSettings(cb: (settings: AppSettings) => void): () => void;
+  onUpdate(cb: (state: UpdateState) => void): () => void;
+  checkForUpdates(): void;
+  installUpdate(): void;
   showMain(deviceId?: string): void;
   onSelect(cb: (id: string) => void): () => void;
   resizeFlyout(height: number): void;
