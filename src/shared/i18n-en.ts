@@ -320,6 +320,25 @@ export const EN: Record<string, string> = {
   'Zeigt die echten LED-Farben des gewählten Geräts. Die Weboberfläche kann sie nur für ein Programm gleichzeitig liefern.':
     'Shows the actual LED colors of the selected device. WLED streams them to one client at a time.',
 
+  // Updates
+  'Update bereit': 'Update ready',
+  'WLED Client {version} wird beim nächsten Beenden installiert — oder jetzt über die App.':
+    'WLED Client {version} will be installed when you quit — or right away from the app.',
+  'Updates gibt es nur in der installierten App.': 'Updates are only available in the installed app.',
+  'Suche nach Updates …': 'Checking for updates …',
+  'Version {current} ist aktuell.': 'Version {current} is up to date.',
+  'Lade Version {version} … {progress} %': 'Downloading version {version} … {progress}%',
+  'Version {version} ist bereit und wird beim nächsten Beenden installiert.':
+    'Version {version} is ready and will be installed when you quit.',
+  'Update-Prüfung fehlgeschlagen: {error}': 'Update check failed: {error}',
+  'Installiert: Version {current}': 'Installed: version {current}',
+  'Automatisch nach Updates suchen': 'Check for updates automatically',
+  'Neu starten und aktualisieren': 'Restart and update',
+  'Jetzt prüfen': 'Check now',
+  'Update {version} bereit': 'Update {version} ready',
+  'Wird beim Beenden installiert.': 'Installs when you quit.',
+  'Jetzt neu starten': 'Restart now',
+
   // Fehlermeldungen
   'Verbindung beendet': 'Connection closed',
   'Gerätedaten nicht geladen: {reason}': 'Device data not loaded: {reason}',

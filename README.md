@@ -10,7 +10,7 @@
 [![License: EUPL-1.2](https://img.shields.io/badge/license-EUPL--1.2-blue)](LICENSE)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4)
 
-![Effects with palette previews and live LED preview](docs/screenshots/effects.png)
+![WLED Client demo: effects, palettes, brightness, color wheel, sidebar quick controls, presets](docs/demo.gif)
 
 </div>
 
@@ -42,11 +42,13 @@ power and brightness of all lights from the Windows tray without opening anythin
 - **Gentle on weak Wi-Fi** — one request per device at a time, small requests first, missing data retried later
 - **Light and dark theme**, follows Windows by default
 - **English and German** interface, follows your Windows language
+- **Updates itself** — new versions download in the background and install on the next restart
 
 | | |
 |---|---|
-| ![Colors](docs/screenshots/colors.png) | ![Presets and playlists](docs/screenshots/presets.png) |
-| ![Segments](docs/screenshots/segments.png) | ![Light theme](docs/screenshots/light.png) |
+| ![Effects with palette previews](docs/screenshots/effects.png) | ![Colors](docs/screenshots/colors.png) |
+| ![Presets and playlists](docs/screenshots/presets.png) | ![Segments](docs/screenshots/segments.png) |
+| ![Light theme](docs/screenshots/light.png) | |
 
 <p align="center"><img src="docs/screenshots/tray.png" width="344" alt="Tray quick-access" /><br/><em>Tray quick-access: on/off and brightness for every light</em></p>
 
@@ -65,6 +67,10 @@ Devices on other subnets: **+ Gerät** (add device) → enter the IP, or add the
 Windows 11 puts new tray icons into the overflow menu (^) — drag the icon onto the taskbar to keep the
 quick-access one click away. Closing the window keeps the app running in the tray (configurable);
 quit via right-click on the tray icon.
+
+**Updates:** from version 1.2.0 on, the app checks GitHub for new releases, downloads them in the background
+and installs them when you restart (or right away via *Restart now*). Can be turned off in the app settings.
+Coming from 1.0 or 1.1? Install 1.2.0 once by hand — after that it's automatic.
 
 Settings and the device list live in `%APPDATA%\WLED Client\`.
 
@@ -127,6 +133,7 @@ npm run mock                     # two simulated devices on 127.0.0.1:8181 and :
 npm run build && npm run e2e     # end-to-end test (Playwright) against simulated devices
 node scripts/e2e.mjs --exe "release/win-unpacked/WLED Client.exe"   # same, against the packaged app
 npm run screenshots              # regenerates docs/screenshots/
+npm run demo                     # records docs/demo.gif + docs/demo.mp4 (needs ffmpeg)
 ```
 
 ## Kurz auf Deutsch

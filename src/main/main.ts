@@ -12,10 +12,11 @@ import {
 } from 'electron';
 import path from 'node:path';
 import { key, resolveLanguage, setLanguage, t } from '../shared/i18n';
-import type { AppSettings, DevicePage, DeviceSnapshot } from '../shared/types';
+import type { AppSettings, DevicePage, DeviceSnapshot, UpdateState } from '../shared/types';
 import { DeviceManager } from './devices';
 import { Scanner, localSubnets } from './discovery';
 import { Store } from './store';
+import { Updater } from './updater';
 
 // Für Tests: eigenes Datenverzeichnis, damit eine installierte Instanz unberührt bleibt.
 if (process.env.WLED_CLIENT_USER_DATA) app.setPath('userData', process.env.WLED_CLIENT_USER_DATA);
@@ -50,6 +51,7 @@ const PAGE_PATHS: Record<DevicePage, [string, string]> = {
 
 let store: Store;
 let manager: DeviceManager;
+let updater: Updater;
 const scanner = new Scanner();
 let mainWin: BrowserWindow | null = null;
 let flyoutWin: BrowserWindow | null = null;
@@ -329,6 +331,7 @@ function applySettings(patch: Partial<AppSettings>): AppSettings {
   if (typeof patch.closeToTray === 'boolean') clean.closeToTray = patch.closeToTray;
   if (typeof patch.startWithWindows === 'boolean') clean.startWithWindows = patch.startWithWindows;
   if (typeof patch.liveView === 'boolean') clean.liveView = patch.liveView;
+  if (typeof patch.autoUpdate === 'boolean') clean.autoUpdate = patch.autoUpdate;
   if (patch.theme === 'system' || patch.theme === 'dark' || patch.theme === 'light') clean.theme = patch.theme;
   if (patch.language === 'system' || patch.language === 'de' || patch.language === 'en') clean.language = patch.language;
   if (typeof patch.selectedId === 'string') clean.selectedId = patch.selectedId;
@@ -338,6 +341,7 @@ function applySettings(patch: Partial<AppSettings>): AppSettings {
     app.setLoginItemSettings({ openAtLogin: next.startWithWindows, args: ['--hidden'] });
   }
   if (clean.liveView !== undefined) updateLive();
+  if (clean.autoUpdate !== undefined) updater.schedule(next.autoUpdate);
   if (clean.language) {
     applyLanguage();
     updateTray();
@@ -365,7 +369,14 @@ const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 
 const isPatch = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 function registerIpc(): void {
-  ipcMain.handle('snapshot', () => ({ devices: manager.list(), settings: store.getSettings(), version: app.getVersion() }));
+  ipcMain.handle('snapshot', () => ({
+    devices: manager.list(),
+    settings: store.getSettings(),
+    version: app.getVersion(),
+    update: updater.state,
+  }));
+  ipcMain.on('update-check', () => updater.check());
+  ipcMain.on('update-install', () => updater.install());
   ipcMain.handle('static', (_e, id: unknown) => (isId(id) ? (manager.get(id)?.staticData ?? null) : null));
   ipcMain.handle('palettes', (_e, id: unknown) => (isId(id) ? (manager.get(id)?.loadPalettes() ?? null) : null));
   ipcMain.on('send', (_e, id: unknown, patch: unknown, key: unknown) => {
@@ -466,6 +477,21 @@ if (!app.requestSingleInstanceLock()) {
       if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('live', id, frame);
     });
     scanner.on('progress', (p) => broadcast('scan', p));
+    updater = new Updater();
+    updater.on('state', (state: UpdateState) => {
+      broadcast('update', state);
+      if (state.status === 'ready') {
+        tray?.displayBalloon({
+          iconType: 'info',
+          title: t('Update bereit'),
+          content: t('WLED Client {version} wird beim nächsten Beenden installiert — oder jetzt über die App.', { version: state.version ?? '' }),
+        });
+      }
+    });
+    updater.on('before-install', () => {
+      quitting = true;
+    });
+    updater.schedule(store.getSettings().autoUpdate);
     registerIpc();
     manager.init();
     createTray();

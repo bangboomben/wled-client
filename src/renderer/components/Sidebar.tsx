@@ -1,7 +1,7 @@
 import { useRef, useState, type CSSProperties } from 'react';
 import { t } from '../../shared/i18n';
 import type { DeviceSnapshot } from '../../shared/types';
-import { send, sendAll, wled } from '../lib/store';
+import { send, sendAll, useUpdate, wled } from '../lib/store';
 import { accentFor, displayColor, pct, viewSeg } from '../lib/wled';
 import { Slider, Toggle } from './controls';
 import { Icon, Logo } from './Icon';
@@ -127,6 +127,26 @@ function DeviceRow({
   );
 }
 
+/** Hinweis, sobald ein Update heruntergeladen ist. */
+function UpdateNotice() {
+  const u = useUpdate();
+  if (u.status !== 'ready') return null;
+  return (
+    <div className="update-card" role="status">
+      <div className="update-head">
+        <Icon name="upload" size={18} />
+        <div className="update-text">
+          <strong>{t('Update {version} bereit', { version: u.version ?? '' })}</strong>
+          <span className="muted small">{t('Wird beim Beenden installiert.')}</span>
+        </div>
+      </div>
+      <button className="btn primary small" onClick={() => wled.installUpdate()}>
+        {t('Jetzt neu starten')}
+      </button>
+    </div>
+  );
+}
+
 export function Sidebar({
   devices,
   selectedId,
@@ -173,6 +193,7 @@ export function Sidebar({
         ))}
         {devices.length === 0 && <p className="sidebar-empty">{t('Noch keine Geräte.')}</p>}
       </div>
+      <UpdateNotice />
       <div className="sidebar-foot">
         <button className="btn ghost" onClick={onAdd}>
           <Icon name="plus" size={16} />
