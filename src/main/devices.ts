@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { t } from '../shared/i18n';
 import type { CommandResult, DeviceConfig, DeviceSnapshot } from '../shared/types';
 import { DeviceConnection, normalizeHost, probeInfo } from './device';
 import type { Store } from './store';
@@ -80,14 +81,14 @@ export class DeviceManager extends EventEmitter {
 
   async add(input: string): Promise<CommandResult & { id?: string }> {
     const host = normalizeHost(input);
-    if (!host) return { ok: false, error: 'Bitte eine IP-Adresse oder einen Hostnamen eingeben.' };
+    if (!host) return { ok: false, error: t('Bitte eine IP-Adresse oder einen Hostnamen eingeben.') };
     const byHost = this.all().find((c) => c.host === host);
     if (byHost) return { ok: true, id: byHost.id };
     let info;
     try {
       info = await probeInfo(host, 6000);
     } catch {
-      return { ok: false, error: `Unter ${host} antwortet kein WLED-Gerät.` };
+      return { ok: false, error: t('Unter {host} antwortet kein WLED-Gerät.', { host }) };
     }
     const byMac = info.mac ? this.findByMac(info.mac) : undefined;
     if (byMac) {
@@ -114,19 +115,19 @@ export class DeviceManager extends EventEmitter {
 
   async update(id: string, changes: { alias?: string; host?: string }): Promise<CommandResult> {
     const conn = this.conns.get(id);
-    if (!conn) return { ok: false, error: 'Gerät nicht gefunden' };
+    if (!conn) return { ok: false, error: t('Gerät nicht gefunden') };
     if (changes.alias !== undefined) {
       const alias = changes.alias.trim();
       conn.config.alias = alias || undefined;
     }
     if (changes.host !== undefined) {
       const host = normalizeHost(changes.host);
-      if (!host) return { ok: false, error: 'Adresse fehlt' };
+      if (!host) return { ok: false, error: t('Adresse fehlt') };
       if (host !== conn.host) {
         try {
           await probeInfo(host, 6000);
         } catch {
-          return { ok: false, error: `Unter ${host} antwortet kein WLED-Gerät.` };
+          return { ok: false, error: t('Unter {host} antwortet kein WLED-Gerät.', { host }) };
         }
         conn.setHost(host);
       }
@@ -144,7 +145,7 @@ export class DeviceManager extends EventEmitter {
 
   send(id: string, patch: Record<string, unknown>, key?: string): Promise<CommandResult> {
     const conn = this.conns.get(id);
-    if (!conn) return Promise.resolve({ ok: false, error: 'Gerät nicht gefunden' });
+    if (!conn) return Promise.resolve({ ok: false, error: t('Gerät nicht gefunden') });
     conn.applyLocal(patch);
     const result = conn.enqueue(patch, key);
     if (PRESET_KEYS.some((k) => k in patch)) void result.then(() => conn.reloadPresetsSoon());

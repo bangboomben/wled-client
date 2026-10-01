@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { key, t } from '../../../shared/i18n';
 import type { DeviceSnapshot, DeviceStatic, WledState } from '../../../shared/types';
 import { send, usePalx } from '../../lib/store';
 import { effectList, paletteGradient, paletteList, parseFx, segPatch, viewSeg } from '../../lib/wled';
@@ -6,11 +7,11 @@ import { SearchInput, Slider, Toggle } from '../controls';
 import { Icon } from '../Icon';
 
 const FILTERS = [
-  { id: 'pal', label: 'Mit Palette' },
+  { id: 'pal', label: key('Mit Palette') },
   { id: '1', label: '1D' },
   { id: '2', label: '2D' },
-  { id: 'v', label: '♪ Lautstärke' },
-  { id: 'f', label: '♫ Frequenz' },
+  { id: 'v', label: key('♪ Lautstärke') },
+  { id: 'f', label: key('♫ Frequenz') },
 ];
 
 function ListSkeleton() {
@@ -52,20 +53,20 @@ export function EffectsTab({ device, state, st }: { device: DeviceSnapshot; stat
   }, [seg.pal, st]);
 
   const sendSeg = (fields: Record<string, unknown>, key?: string) => send(device.id, segPatch(state, fields), key);
-  const fxName = st?.effects[seg.fx] ?? `Effekt ${seg.fx}`;
+  const fxName = st?.effects[seg.fx] ?? t('Effekt {n}', { n: seg.fx });
 
   return (
     <div className="fx-layout">
       <section className="panel list-panel">
         <div className="panel-head">
-          <h3>Effekt</h3>
-          <span className="muted small">{effects.length ? `${shownFx.length} von ${effects.length}` : ''}</span>
+          <h3>{t('Effekt')}</h3>
+          <span className="muted small">{effects.length ? t('{n} von {total}', { n: shownFx.length, total: effects.length }) : ''}</span>
         </div>
-        <SearchInput value={q} onChange={setQ} placeholder="Effekt suchen" />
+        <SearchInput value={q} onChange={setQ} placeholder={t('Effekt suchen')} />
         <div className="filter-chips">
           {FILTERS.map((f) => (
             <button key={f.id} className={`fchip${filter === f.id ? ' on' : ''}`} onClick={() => setFilter(filter === f.id ? null : f.id)}>
-              {f.label}
+              {t(f.label)}
             </button>
           ))}
         </div>
@@ -87,7 +88,7 @@ export function EffectsTab({ device, state, st }: { device: DeviceSnapshot; stat
               </span>
             </button>
           ))}
-          {st && shownFx.length === 0 && <p className="muted small pad">Kein Effekt passt zur Suche.</p>}
+          {st && shownFx.length === 0 && <p className="muted small pad">{t('Kein Effekt passt zur Suche.')}</p>}
         </div>
       </section>
 
@@ -97,7 +98,7 @@ export function EffectsTab({ device, state, st }: { device: DeviceSnapshot; stat
             <h3>{fxName}</h3>
           </div>
           {meta.sliders.length === 0 && meta.options.length === 0 && (
-            <p className="muted small">Dieser Effekt hat keine eigenen Einstellungen.</p>
+            <p className="muted small">{t('Dieser Effekt hat keine eigenen Einstellungen.')}</p>
           )}
           {meta.sliders.map((sl) => {
             const max = sl.key === 'c3' ? 31 : 255;
@@ -105,26 +106,26 @@ export function EffectsTab({ device, state, st }: { device: DeviceSnapshot; stat
             return (
               <div className="field" key={sl.key}>
                 <span>
-                  {sl.label} <span className="val">{value}</span>
+                  {t(sl.label)} <span className="val">{value}</span>
                 </span>
-                <Slider value={value} max={max} label={sl.label} onChange={(v) => sendSeg({ [sl.key]: v }, `seg-${sl.key}`)} />
+                <Slider value={value} max={max} label={t(sl.label)} onChange={(v) => sendSeg({ [sl.key]: v }, `seg-${sl.key}`)} />
               </div>
             );
           })}
           {meta.options.map((o) => (
             <div className="pop-row" key={o.key}>
-              <span>{o.label}</span>
-              <Toggle checked={!!seg[o.key]} label={o.label} onChange={(v) => sendSeg({ [o.key]: v })} />
+              <span>{t(o.label)}</span>
+              <Toggle checked={!!seg[o.key]} label={t(o.label)} onChange={(v) => sendSeg({ [o.key]: v })} />
             </div>
           ))}
         </section>
 
         <section className={`panel list-panel${meta.usesPalette ? '' : ' dimmed'}`}>
           <div className="panel-head">
-            <h3>{meta.usesPalette ? meta.paletteLabel : 'Palette'}</h3>
-            {!meta.usesPalette && <span className="muted small">vom aktuellen Effekt nicht genutzt</span>}
+            <h3>{meta.usesPalette ? t(meta.paletteLabel) : t('Palette')}</h3>
+            {!meta.usesPalette && <span className="muted small">{t('vom aktuellen Effekt nicht genutzt')}</span>}
           </div>
-          <SearchInput value={pq} onChange={setPq} placeholder="Palette suchen" />
+          <SearchInput value={pq} onChange={setPq} placeholder={t('Palette suchen')} />
           <div className="list palettes">
             {!st && <ListSkeleton />}
             {shownPal.map((p) => (

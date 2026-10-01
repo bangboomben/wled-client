@@ -1,3 +1,4 @@
+import { key, t } from '../../shared/i18n';
 import type { Color, DeviceSnapshot, PalxEntry, WledInfo, WledSegment, WledState } from '../../shared/types';
 
 // ------------------------------------------------------------------ Segmente
@@ -43,9 +44,9 @@ export interface FxMeta {
 }
 
 const SLIDER_KEYS: SliderKey[] = ['sx', 'ix', 'c1', 'c2', 'c3'];
-const SLIDER_LABELS = ['Geschwindigkeit', 'Intensität', 'Regler 1', 'Regler 2', 'Regler 3'];
+const SLIDER_LABELS = [key('Geschwindigkeit'), key('Intensität'), key('Regler 1'), key('Regler 2'), key('Regler 3')];
 const OPTION_KEYS: OptionKey[] = ['o1', 'o2', 'o3'];
-const COLOR_LABELS = ['Farbe 1', 'Farbe 2', 'Farbe 3'];
+const COLOR_LABELS = [key('Farbe 1'), key('Farbe 2'), key('Farbe 3')];
 
 /**
  * Liest den Metadaten-String eines Effekts („Regler;Farben;Palette;Flags“) so aus,
@@ -119,7 +120,7 @@ export interface PaletteEntry {
 
 export function paletteList(palettes: string[], info?: WledInfo): PaletteEntry[] {
   const list: PaletteEntry[] = palettes.map((name, id) => ({ id, name })).filter((p) => p.name && p.name !== '-');
-  for (let i = 0; i < (info?.cpalcount ?? 0); i++) list.push({ id: 255 - i, name: `~ Eigene ${i} ~` });
+  for (let i = 0; i < (info?.cpalcount ?? 0); i++) list.push({ id: 255 - i, name: t('~ Eigene {n} ~', { n: i }) });
   const rank = (p: PaletteEntry) => (p.id === 0 ? 0 : p.name.startsWith('*') ? 1 : p.name.startsWith('~') ? 3 : 2);
   return list.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'de'));
 }
@@ -224,7 +225,7 @@ export function formatUptime(sec: number): string {
   const d = Math.floor(sec / 86400);
   const h = Math.floor((sec % 86400) / 3600);
   const m = Math.floor((sec % 3600) / 60);
-  if (d) return `${d} T ${h} Std`;
-  if (h) return `${h} Std ${m} Min`;
-  return `${m} Min`;
+  if (d) return t('{d} T {h} Std', { d, h });
+  if (h) return t('{h} Std {m} Min', { h, m });
+  return t('{m} Min', { m });
 }

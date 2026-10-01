@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { resolveLanguage, setLanguage } from '../../shared/i18n';
 import { applyStatePatch } from '../../shared/merge';
 import type { AppSettings, DeviceSnapshot, DeviceStatic, PalxEntry, ScanProgress, WledBridge } from '../../shared/types';
 
@@ -14,7 +15,7 @@ type Listener = () => void;
 
 class AppStore {
   devices: DeviceSnapshot[] = [];
-  settings: AppSettings = { closeToTray: true, startWithWindows: false, liveView: false, theme: 'system' };
+  settings: AppSettings = { closeToTray: true, startWithWindows: false, liveView: false, theme: 'system', language: 'system' };
   scan: ScanProgress = { running: false, done: 0, total: 0, found: [] };
   version = '';
   ready = false;
@@ -24,6 +25,7 @@ class AppStore {
     const snap = await wled.getSnapshot();
     this.devices = snap.devices;
     this.settings = snap.settings;
+    this.applyLanguage();
     this.version = snap.version;
     this.ready = true;
     wled.onDevices((list) => {
@@ -40,6 +42,7 @@ class AppStore {
     });
     wled.onSettings((s) => {
       this.settings = s;
+      this.applyLanguage();
       this.emit();
     });
     wled.onScan((p) => {
@@ -47,6 +50,13 @@ class AppStore {
       this.emit();
     });
     this.emit();
+  }
+
+  /** Sprache aus der Einstellung bzw. der Systemsprache (Electron setzt navigator.language). */
+  private applyLanguage(): void {
+    const lang = resolveLanguage(this.settings.language, navigator.language);
+    setLanguage(lang);
+    document.documentElement.lang = lang;
   }
 
   /** Übernimmt eine Änderung sofort in die Anzeige; der Hauptprozess bestätigt sie danach. */

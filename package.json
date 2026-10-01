@@ -1,7 +1,7 @@
 {
   "name": "wled-client",
   "productName": "WLED Client",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Unofficial Windows desktop client for WLED: switch between devices, colors, effects, palettes, segments, presets and a tray quick-access with brightness sliders.",
   "author": "bangboomben",
   "license": "EUPL-1.2",
@@ -23,6 +23,7 @@
     "mock": "node --no-warnings scripts/mock-wled.mjs",
     "e2e": "node scripts/e2e.mjs",
     "screenshots": "node scripts/screenshots.mjs",
+    "i18n": "node --no-warnings scripts/i18n-check.mjs",
     "icons": "python scripts/make-icons.py",
     "dist": "node scripts/build.mjs && electron-builder --win nsis"
   },

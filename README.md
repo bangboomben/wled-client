@@ -41,6 +41,7 @@ power and brightness of all lights from the Windows tray without opening anythin
 - **Instant feedback** — live state over WebSocket; dragging a slider only ever sends the latest value
 - **Gentle on weak Wi-Fi** — one request per device at a time, small requests first, missing data retried later
 - **Light and dark theme**, follows Windows by default
+- **English and German** interface, follows your Windows language
 
 | | |
 |---|---|
@@ -49,7 +50,7 @@ power and brightness of all lights from the Windows tray without opening anythin
 
 <p align="center"><img src="docs/screenshots/tray.png" width="344" alt="Tray quick-access" /><br/><em>Tray quick-access: on/off and brightness for every light</em></p>
 
-> **Language:** the interface is currently **German**. An English translation is planned — contributions welcome.
+> **Languages:** English and German — picked automatically from your Windows language, switchable in the app settings.
 
 ## Download & install
 
@@ -94,6 +95,7 @@ Requires Node.js ≥ 22 (Python with Pillow only to regenerate icons).
 npm install
 npm run dev          # Vite with hot reload + Electron (restarts on main-process changes)
 npm run typecheck
+npm run i18n         # every UI text needs an English translation (src/shared/i18n-en.ts)
 npm run build        # dist-electron/ (main, preload) + dist/renderer/ (UI)
 npm run dist         # build + Windows installer into release/
 ```
@@ -133,7 +135,7 @@ WLED Client ist eine Windows-App für alle WLED-Controller im Netz: Geräte per 
 Helligkeit und Ein/Aus direkt in der Seitenleiste und im Tray-Schnellzugriff, dazu alles, was die
 WLED-Weboberfläche kann (Farben, Effekte, Paletten, Segmente, Presets, Playlists, Nachtlicht, Sync,
 Live-Vorschau). Installer unter [Releases](https://github.com/bangboomben/wled-client/releases/latest),
-Installation ohne Administratorrechte. Die Oberfläche ist auf Deutsch.
+Installation ohne Administratorrechte. Die Oberfläche spricht Deutsch und Englisch, je nach Windows-Sprache.
 
 ## License & credits
 

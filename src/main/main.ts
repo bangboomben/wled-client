@@ -11,6 +11,7 @@ import {
   type MenuItemConstructorOptions,
 } from 'electron';
 import path from 'node:path';
+import { key, resolveLanguage, setLanguage, t } from '../shared/i18n';
 import type { AppSettings, DevicePage, DeviceSnapshot } from '../shared/types';
 import { DeviceManager } from './devices';
 import { Scanner, localSubnets } from './discovery';
@@ -32,19 +33,19 @@ const THEME = {
 };
 
 const PAGE_PATHS: Record<DevicePage, [string, string]> = {
-  ui: ['/', 'Weboberfläche'],
-  settings: ['/settings', 'Einstellungen'],
-  wifi: ['/settings/wifi', 'WLAN'],
-  leds: ['/settings/leds', 'LED-Einstellungen'],
-  '2D': ['/settings/2D', '2D-Konfiguration'],
-  'ui-settings': ['/settings/ui', 'Oberfläche'],
-  sync: ['/settings/sync', 'Sync-Schnittstellen'],
-  time: ['/settings/time', 'Zeit & Makros'],
-  sec: ['/settings/sec', 'Sicherheit & Updates'],
-  um: ['/settings/um', 'Usermods'],
-  cpal: ['/cpal.htm', 'Paletten-Editor'],
-  edit: ['/edit', 'Datei-Editor'],
-  update: ['/update', 'Firmware-Update'],
+  ui: ['/', key('Weboberfläche')],
+  settings: ['/settings', key('Einstellungen')],
+  wifi: ['/settings/wifi', key('WLAN')],
+  leds: ['/settings/leds', key('LED-Einstellungen')],
+  '2D': ['/settings/2D', key('2D-Konfiguration')],
+  'ui-settings': ['/settings/ui', key('Oberfläche')],
+  sync: ['/settings/sync', key('Sync-Schnittstellen')],
+  time: ['/settings/time', key('Zeit & Makros')],
+  sec: ['/settings/sec', key('Sicherheit & Updates')],
+  um: ['/settings/um', key('Usermods')],
+  cpal: ['/cpal.htm', key('Paletten-Editor')],
+  edit: ['/edit', key('Datei-Editor')],
+  update: ['/update', key('Firmware-Update')],
 };
 
 let store: Store;
@@ -140,8 +141,8 @@ function showTrayHintOnce(): void {
   store.setSettings({ trayHintShown: true });
   tray.displayBalloon({
     iconType: 'info',
-    title: 'WLED Client läuft weiter',
-    content: 'Klick auf das Symbol im Infobereich: Ein/Aus und Helligkeit aller Geräte. Rechtsklick: Menü und Beenden.',
+    title: t('WLED Client läuft weiter'),
+    content: t('Klick auf das Symbol im Infobereich: Ein/Aus und Helligkeit aller Geräte. Rechtsklick: Menü und Beenden.'),
   });
 }
 
@@ -225,11 +226,11 @@ function trayIcon(anyOn: boolean) {
 function buildTrayMenu(): Menu {
   const devices = manager.list();
   const items: MenuItemConstructorOptions[] = [
-    { label: 'WLED Client öffnen', click: () => showMain() },
+    { label: t('WLED Client öffnen'), click: () => showMain() },
     { type: 'separator' },
     ...devices.map(
       (d): MenuItemConstructorOptions => ({
-        label: d.status === 'online' ? d.name : `${d.name} (offline)`,
+        label: d.status === 'online' ? d.name : t('{name} (offline)', { name: d.name }),
         type: 'checkbox',
         checked: d.status === 'online' && !!d.state?.on,
         enabled: d.status === 'online',
@@ -239,10 +240,10 @@ function buildTrayMenu(): Menu {
   ];
   if (devices.length) items.push({ type: 'separator' });
   items.push(
-    { label: 'Alle einschalten', enabled: devices.length > 0, click: () => manager.sendAll({ on: true }) },
-    { label: 'Alle ausschalten', enabled: devices.length > 0, click: () => manager.sendAll({ on: false }) },
+    { label: t('Alle einschalten'), enabled: devices.length > 0, click: () => manager.sendAll({ on: true }) },
+    { label: t('Alle ausschalten'), enabled: devices.length > 0, click: () => manager.sendAll({ on: false }) },
     { type: 'separator' },
-    { label: 'Beenden', click: () => quitApp() },
+    { label: t('Beenden'), click: () => quitApp() },
   );
   return Menu.buildFromTemplate(items);
 }
@@ -258,7 +259,9 @@ function updateTray(): void {
     tray.setImage(trayIcon(on.length > 0));
     tray.setToolTip(
       devices.length
-        ? `WLED Client — ${on.length} von ${devices.length} an${online.length < devices.length ? `, ${devices.length - online.length} offline` : ''}`
+        ? online.length < devices.length
+          ? t('WLED Client — {on} von {total} an, {off} offline', { on: on.length, total: devices.length, off: devices.length - online.length })
+          : t('WLED Client — {on} von {total} an', { on: on.length, total: devices.length })
         : 'WLED Client',
     );
   }, 150);
@@ -285,7 +288,7 @@ function openDevicePage(id: string, page: DevicePage): void {
     win = new BrowserWindow({
       width: 1040,
       height: 840,
-      title: `${conn.displayName} — ${label}`,
+      title: `${conn.displayName} — ${t(label)}`,
       icon: appIcon(),
       autoHideMenuBar: true,
       backgroundColor: '#111111',
@@ -313,7 +316,7 @@ function openDevicePage(id: string, page: DevicePage): void {
     });
     pageWindows.set(id, win);
   }
-  win.setTitle(`${conn.displayName} — ${label}`);
+  win.setTitle(`${conn.displayName} — ${t(label)}`);
   void win.loadURL(`http://${host}${urlPath}`);
   win.show();
   win.focus();
@@ -327,6 +330,7 @@ function applySettings(patch: Partial<AppSettings>): AppSettings {
   if (typeof patch.startWithWindows === 'boolean') clean.startWithWindows = patch.startWithWindows;
   if (typeof patch.liveView === 'boolean') clean.liveView = patch.liveView;
   if (patch.theme === 'system' || patch.theme === 'dark' || patch.theme === 'light') clean.theme = patch.theme;
+  if (patch.language === 'system' || patch.language === 'de' || patch.language === 'en') clean.language = patch.language;
   if (typeof patch.selectedId === 'string') clean.selectedId = patch.selectedId;
   const next = store.setSettings(clean);
   if (clean.theme) nativeTheme.themeSource = next.theme;
@@ -334,8 +338,16 @@ function applySettings(patch: Partial<AppSettings>): AppSettings {
     app.setLoginItemSettings({ openAtLogin: next.startWithWindows, args: ['--hidden'] });
   }
   if (clean.liveView !== undefined) updateLive();
+  if (clean.language) {
+    applyLanguage();
+    updateTray();
+  }
   broadcast('settings', next);
   return next;
+}
+
+function applyLanguage(): void {
+  setLanguage(resolveLanguage(store.getSettings().language, app.getLocale()));
 }
 
 function applyTheme(): void {
@@ -363,7 +375,7 @@ function registerIpc(): void {
     if (isPatch(patch)) manager.sendAll(patch);
   });
   ipcMain.handle('command', (_e, id: unknown, patch: unknown) =>
-    isId(id) && isPatch(patch) ? manager.send(id, patch) : { ok: false, error: 'Ungültiger Befehl' },
+    isId(id) && isPatch(patch) ? manager.send(id, patch) : { ok: false, error: t('Ungültiger Befehl') },
   );
   ipcMain.handle('refresh', async (_e, id: unknown) => {
     if (isId(id)) await manager.get(id)?.loadStatic();
@@ -375,7 +387,7 @@ function registerIpc(): void {
   ipcMain.handle('update', (_e, id: unknown, changes: unknown) =>
     isId(id) && isPatch(changes)
       ? manager.update(id, changes as { alias?: string; host?: string })
-      : { ok: false, error: 'Ungültig' },
+      : { ok: false, error: t('Ungültig') },
   );
   ipcMain.handle('reorder', (_e, ids: unknown) => {
     if (Array.isArray(ids)) manager.reorder(ids.filter(isId));
@@ -437,6 +449,7 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
     store = new Store();
+    applyLanguage();
     nativeTheme.themeSource = store.getSettings().theme;
     nativeTheme.on('updated', applyTheme);
     manager = new DeviceManager(store);

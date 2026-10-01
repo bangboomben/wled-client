@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { t } from '../../shared/i18n';
 import { wled } from '../lib/store';
 import { Icon } from './Icon';
 
@@ -174,7 +175,7 @@ export function Modal({
       <div className="modal" style={{ width }} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <h2>{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Schließen" title="Schließen">
+          <button className="icon-btn" onClick={onClose} aria-label={t('Schließen')} title={t('Schließen')}>
             <Icon name="x" />
           </button>
         </div>
@@ -238,7 +239,7 @@ export function SearchInput({
       <Icon name="search" size={15} />
       <input value={value} placeholder={placeholder} spellCheck={false} onChange={(e) => onChange(e.target.value)} />
       {value && (
-        <button type="button" className="search-clear" onClick={() => onChange('')} aria-label="Suche leeren">
+        <button type="button" className="search-clear" onClick={() => onChange('')} aria-label={t('Suche leeren')}>
           <Icon name="x" size={13} />
         </button>
       )}

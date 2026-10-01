@@ -47,7 +47,7 @@ writeFileSync(
     { id: 'dev-bedroom', host: `127.0.0.1:${PORTS.bedroom}` },
   ]),
 );
-writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true }));
+writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'de' }));
 
 let failures = 0;
 const results = [];
@@ -260,6 +260,18 @@ try {
     await win.waitForSelector('.info-grid');
     await win.waitForTimeout(300);
     await win.screenshot({ path: path.join(SHOTS, '11-info.png') });
+    await win.keyboard.press('Escape');
+  });
+
+  await step('Sprachwechsel auf Englisch und zurück', async () => {
+    await win.click('.sidebar-foot .icon-btn');
+    await win.click('.modal .seg-switch button:has-text("English")');
+    await win.waitForFunction(() => document.querySelector('.tab[data-tab="colors"]')?.textContent?.includes('Colors'));
+    await fly.waitForFunction(() => /All (on|off)/.test(document.querySelector('.flyout-head .btn')?.textContent ?? ''));
+    await win.screenshot({ path: path.join(SHOTS, '14-english.png') });
+    await win.click('.sidebar-foot .icon-btn');
+    await win.click('.modal .seg-switch button:has-text("Deutsch")');
+    await win.waitForFunction(() => document.querySelector('.tab[data-tab="colors"]')?.textContent?.includes('Farben'));
     await win.keyboard.press('Escape');
   });
 

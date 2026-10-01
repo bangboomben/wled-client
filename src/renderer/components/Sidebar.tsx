@@ -1,4 +1,5 @@
 import { useRef, useState, type CSSProperties } from 'react';
+import { t } from '../../shared/i18n';
 import type { DeviceSnapshot } from '../../shared/types';
 import { send, sendAll, wled } from '../lib/store';
 import { accentFor, displayColor, pct, viewSeg } from '../lib/wled';
@@ -6,9 +7,9 @@ import { Slider, Toggle } from './controls';
 import { Icon, Logo } from './Icon';
 
 export function statusText(d: DeviceSnapshot): string {
-  if (d.status === 'connecting') return 'Verbinde …';
-  if (d.status === 'offline') return 'Offline';
-  return d.state?.on ? `An · ${pct(d.state.bri)} %` : 'Aus';
+  if (d.status === 'connecting') return t('Verbinde …');
+  if (d.status === 'offline') return t('Offline');
+  return d.state?.on ? t('An · {n} %', { n: pct(d.state.bri) }) : t('Aus');
 }
 
 export function DeviceDot({ device, size = 12 }: { device: DeviceSnapshot; size?: number }) {
@@ -34,7 +35,7 @@ export function QuickControls({ device }: { device: DeviceSnapshot }) {
   const on = online && !!device.state?.on;
   return (
     <>
-      <Toggle checked={on} disabled={!online} label={`${device.name} ein- oder ausschalten`} onChange={(v) => send(device.id, { on: v })} />
+      <Toggle checked={on} disabled={!online} label={t('{name} ein- oder ausschalten', { name: device.name })} onChange={(v) => send(device.id, { on: v })} />
       <div className="row-slider">
         <Slider
           variant="mini"
@@ -42,7 +43,7 @@ export function QuickControls({ device }: { device: DeviceSnapshot }) {
           min={1}
           disabled={!online}
           fillColor={on ? undefined : 'var(--muted)'}
-          label={`Helligkeit ${device.name}`}
+          label={t('Helligkeit {name}', { name: device.name })}
           onChange={(v) => send(device.id, { bri: v }, 'bri')}
         />
       </div>
@@ -75,7 +76,7 @@ function DeviceRow({
       role="option"
       aria-selected={active}
       tabIndex={0}
-      title={index < 9 ? `Strg+${index + 1}` : undefined}
+      title={index < 9 ? t('Strg+{n}', { n: index + 1 }) : undefined}
       className={`device-row${active ? ' active' : ''}${online ? '' : ' offline'}${dropHint ? ` drop-${dropHint}` : ''}`}
       style={deviceAccent(device)}
       onClick={() => onSelect(device.id)}
@@ -158,7 +159,7 @@ export function Sidebar({
         <Logo />
         <span className="app-title">WLED Client</span>
       </div>
-      <div className="device-list" role="listbox" aria-label="Geräte">
+      <div className="device-list" role="listbox" aria-label={t('Geräte')}>
         {devices.map((d, i) => (
           <DeviceRow
             key={d.id}
@@ -170,19 +171,19 @@ export function Sidebar({
             onMove={move}
           />
         ))}
-        {devices.length === 0 && <p className="sidebar-empty">Noch keine Geräte.</p>}
+        {devices.length === 0 && <p className="sidebar-empty">{t('Noch keine Geräte.')}</p>}
       </div>
       <div className="sidebar-foot">
         <button className="btn ghost" onClick={onAdd}>
           <Icon name="plus" size={16} />
-          Gerät
+          {t('Gerät')}
         </button>
         <button className="btn ghost" disabled={!devices.length} onClick={() => sendAll({ on: !anyOn })}>
           <Icon name="power" size={16} />
-          {anyOn ? 'Alle aus' : 'Alle an'}
+          {anyOn ? t('Alle aus') : t('Alle an')}
         </button>
         <span className="spacer" />
-        <button className="icon-btn" onClick={onSettings} aria-label="App-Einstellungen" title="App-Einstellungen">
+        <button className="icon-btn" onClick={onSettings} aria-label={t('App-Einstellungen')} title={t('App-Einstellungen')}>
           <Icon name="gear" />
         </button>
       </div>
