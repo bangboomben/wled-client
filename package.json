@@ -1,0 +1,18 @@
+{
+  "name": "wled-client",
+  "productName": "WLED Client",
+  "version": "1.0.0",
+  "description": "Unofficial Windows desktop client for WLED: switch between devices, colors, effects, palettes, segments, presets and a tray quick-access with brightness sliders.",
+  "author": "bangboomben",
+  "license": "EUPL-1.2",
+  "homepage": "https://github.com/bangboomben/wled-client",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bangboomben/wled-client.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bangboomben/wled-client/issues"
+  },
+  "private": true,
+  "main": "dist-electron/main.cjs"
+}
