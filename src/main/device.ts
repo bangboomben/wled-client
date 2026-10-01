@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
+import { t } from '../shared/i18n';
 import { applyStatePatch } from '../shared/merge';
 import type {
   CommandResult,
@@ -195,7 +196,7 @@ export class DeviceConnection extends EventEmitter {
     ws?.on('error', () => {});
     ws?.terminate();
     this.releaseWaiter(null);
-    for (const item of this.queue.splice(0)) item.resolve({ ok: false, error: 'Verbindung beendet' });
+    for (const item of this.queue.splice(0)) item.resolve({ ok: false, error: t('Verbindung beendet') });
   }
 
   setHost(host: string): void {
@@ -386,7 +387,7 @@ export class DeviceConnection extends EventEmitter {
         this.publishStatic();
         await this.fillMissing();
       } catch (err) {
-        this.error = `Gerätedaten nicht geladen: ${(err as Error).message}`;
+        this.error = t('Gerätedaten nicht geladen: {reason}', { reason: (err as Error).message });
         this.emit('update');
         this.scheduleStaticRetry(() => void this.loadStatic());
       } finally {
@@ -556,7 +557,7 @@ export class DeviceConnection extends EventEmitter {
       if (res && res.state) this.applyFull(res.state as WledState, res.info as WledInfo | undefined);
       return { ok: true };
     } catch (err) {
-      return { ok: false, error: `${this.displayName}: Befehl kam nicht an (${(err as Error).message})` };
+      return { ok: false, error: t('{name}: Befehl kam nicht an ({reason})', { name: this.displayName, reason: (err as Error).message }) };
     }
   }
 

@@ -61,7 +61,7 @@ writeFileSync(
   path.join(userData, 'devices.json'),
   JSON.stringify(DEVICES.map((d, i) => ({ id: `shot-${i}`, host: `127.0.0.1:${d.port}` }))),
 );
-writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true }));
+writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'en' }));
 
 const app = await electron.launch({
   args: ['.'],
@@ -74,31 +74,32 @@ try {
   const win = app.windows().find((w) => w.url().includes('index.html'));
   const fly = app.windows().find((w) => w.url().includes('flyout.html'));
   await win.waitForFunction(() => document.querySelectorAll('.device-row').length === 4);
-  await win.waitForFunction(() => [...document.querySelectorAll('.device-sub')].every((e) => !/Verbinde|Offline/.test(e.textContent)));
+  // alle Geräte verbunden = kein Schalter mehr gesperrt
+  await win.waitForFunction(() => document.querySelectorAll('.device-row .toggle:not(:disabled)').length === 4);
   const select = async (name, tab) => {
     await win.click(`.device-row:has-text("${name}")`);
     await win.waitForFunction((n) => document.querySelector('.device-title')?.textContent === n, name);
-    await win.click(`.tab:has-text("${tab}")`);
+    await win.click(`.tab[data-tab="${tab}"]`);
     await win.mouse.move(5, 400);
     await win.waitForTimeout(1500);
   };
 
-  await select('Desk', 'Effekte');
+  await select('Desk', 'effects');
   await win.waitForFunction(() => document.querySelectorAll('.pal-bar').length > 20);
   await win.waitForTimeout(1200);
   await win.screenshot({ path: path.join(OUT, 'effects.png') });
 
-  await select('TV Wall', 'Farben');
+  await select('TV Wall', 'colors');
   await win.screenshot({ path: path.join(OUT, 'colors.png') });
 
-  await select('Desk', 'Presets');
+  await select('Desk', 'presets');
   await win.screenshot({ path: path.join(OUT, 'presets.png') });
 
-  await select('Desk', 'Segmente');
+  await select('Desk', 'segments');
   await win.screenshot({ path: path.join(OUT, 'segments.png') });
 
   await win.emulateMedia({ colorScheme: 'light' });
-  await select('Bedroom', 'Farben');
+  await select('Bedroom', 'colors');
   await win.screenshot({ path: path.join(OUT, 'light.png') });
   await win.emulateMedia({ colorScheme: 'dark' });
 

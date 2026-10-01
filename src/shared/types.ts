@@ -160,12 +160,15 @@ export interface DeviceStatic {
 }
 
 export type ThemeMode = 'system' | 'dark' | 'light';
+export type { LanguageSetting } from './i18n';
+import type { LanguageSetting } from './i18n';
 
 export interface AppSettings {
   closeToTray: boolean;
   startWithWindows: boolean;
   liveView: boolean;
   theme: ThemeMode;
+  language: LanguageSetting;
   selectedId?: string;
   trayHintShown?: boolean;
 }

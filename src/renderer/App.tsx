@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { t } from '../shared/i18n';
 import { DeviceView } from './components/DeviceView';
 import { AddDeviceDialog, AppSettingsDialog, DeviceEditDialog } from './components/dialogs';
 import { Toasts } from './components/controls';
@@ -18,9 +19,9 @@ function Welcome({ onAdd }: { onAdd: () => void }) {
         <Logo size={64} />
         {scan.running ? (
           <>
-            <h2>Suche WLED-Geräte im Netzwerk …</h2>
+            <h2>{t('Suche WLED-Geräte im Netzwerk …')}</h2>
             <p className="muted">
-              {scan.done} von {scan.total} Adressen geprüft · {scan.found.length} gefunden
+              {t('{done} von {total} Adressen geprüft · {found} gefunden', { done: scan.done, total: scan.total, found: scan.found.length })}
             </p>
             <div className="progress wide">
               <span style={{ width: `${scan.total ? (scan.done / scan.total) * 100 : 0}%` }} />
@@ -28,11 +29,11 @@ function Welcome({ onAdd }: { onAdd: () => void }) {
           </>
         ) : (
           <>
-            <h2>Noch keine Geräte</h2>
-            <p className="muted">Füge dein erstes WLED-Gerät hinzu — per Adresse oder über die Netzwerksuche.</p>
+            <h2>{t('Noch keine Geräte')}</h2>
+            <p className="muted">{t('Füge dein erstes WLED-Gerät hinzu — per Adresse oder über die Netzwerksuche.')}</p>
             <button className="btn primary" onClick={onAdd}>
               <Icon name="plus" size={16} />
-              Gerät hinzufügen
+              {t('Gerät hinzufügen')}
             </button>
           </>
         )}

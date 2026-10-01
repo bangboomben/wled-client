@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import { t } from '../shared/i18n';
 import { Icon, Logo } from './components/Icon';
 import { DeviceDot, QuickControls, deviceAccent, statusText } from './components/Sidebar';
 import { sendAll, useDevices, wled } from './lib/store';
@@ -35,26 +36,26 @@ export function Flyout() {
         <span className="spacer" />
         <button className="btn ghost small" disabled={!devices.length} onClick={() => sendAll({ on: !anyOn })}>
           <Icon name="power" size={14} />
-          {anyOn ? 'Alle aus' : 'Alle an'}
+          {anyOn ? t('Alle aus') : t('Alle an')}
         </button>
       </div>
       <div className="flyout-list">
         {devices.map((d) => (
           <div key={d.id} className={`device-row flyout-row${d.status === 'online' ? '' : ' offline'}`} style={deviceAccent(d)}>
             <DeviceDot device={d} />
-            <button className="device-meta as-button" onClick={() => wled.showMain(d.id)} title="In der App öffnen">
+            <button className="device-meta as-button" onClick={() => wled.showMain(d.id)} title={t('In der App öffnen')}>
               <span className="device-name">{d.name}</span>
               <span className="device-sub">{statusText(d)}</span>
             </button>
             <QuickControls device={d} />
           </div>
         ))}
-        {devices.length === 0 && <p className="muted small pad">Noch keine Geräte — füge sie in der App hinzu.</p>}
+        {devices.length === 0 && <p className="muted small pad">{t('Noch keine Geräte — füge sie in der App hinzu.')}</p>}
       </div>
       <div className="flyout-foot">
         <button className="btn ghost small" onClick={() => wled.showMain()}>
           <Icon name="external" size={14} />
-          App öffnen
+          {t('App öffnen')}
         </button>
       </div>
     </div>

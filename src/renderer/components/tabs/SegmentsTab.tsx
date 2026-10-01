@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { key, t } from '../../../shared/i18n';
 import type { DeviceSnapshot, WledSegment, WledState } from '../../../shared/types';
 import { send } from '../../lib/store';
 import { displayColor, pct } from '../../lib/wled';
@@ -30,7 +31,7 @@ const toForm = (s: WledSegment): SegForm => ({
 function NumField({ label, value, onChange, min = 0 }: { label: string; value: string; onChange: (v: string) => void; min?: number }) {
   return (
     <label className="field">
-      <span>{label}</span>
+      <span>{t(label)}</span>
       <input type="number" min={min} value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
@@ -71,9 +72,9 @@ function SegmentCard({
     const grp = num(form.grp);
     const spc = num(form.spc);
     const of = num(form.of);
-    if ([start, stop, grp, spc, of].some((n) => !Number.isFinite(n))) return setError('Bitte nur Zahlen eintragen.');
-    if (start < 0 || stop > count || stop <= start) return setError(`Start muss kleiner als Ende sein, Ende höchstens ${count}.`);
-    if (grp < 1) return setError('Gruppierung muss mindestens 1 sein.');
+    if ([start, stop, grp, spc, of].some((n) => !Number.isFinite(n))) return setError(t('Bitte nur Zahlen eintragen.'));
+    if (start < 0 || stop > count || stop <= start) return setError(t('Start muss kleiner als Ende sein, Ende höchstens {count}.', { count }));
+    if (grp < 1) return setError(t('Gruppierung muss mindestens 1 sein.'));
     const fields: Record<string, unknown> = { n: form.n.trim(), start, stop, grp, spc, of };
     if (matrix) {
       fields.startY = num(form.startY);
@@ -86,7 +87,7 @@ function SegmentCard({
 
   const remove = () => {
     if (state.seg.length <= 1) return;
-    if (!window.confirm(`Segment „${seg.n || seg.id}“ löschen?`)) return;
+    if (!window.confirm(t('Segment „{name}“ löschen?', { name: seg.n || seg.id }))) return;
     sendSeg({ stop: 0 });
   };
 
@@ -95,18 +96,18 @@ function SegmentCard({
     <div className={`seg-card${seg.sel ? ' selected' : ''}`}>
       <div className="seg-head">
         <Check checked={seg.sel} onChange={(v) => sendSeg({ sel: v })}>
-          <span className="sr-only">Auswählen</span>
+          <span className="sr-only">{t('Auswählen')}</span>
         </Check>
         <button className="seg-title" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
           <span className="swatch" style={{ background: displayColor(seg.col[0]) }} />
-          <span className="seg-name">{seg.n || `Segment ${seg.id}`}</span>
+          <span className="seg-name">{seg.n || t('Segment {id}', { id: seg.id })}</span>
           <span className="muted small">
-            LED {seg.start}–{seg.stop - 1} · {len} LEDs
-            {seg.id === state.mainseg ? ' · Hauptsegment' : ''}
+            {t('LED {from}–{to} · {n} LEDs', { from: seg.start, to: seg.stop - 1, n: len })}
+            {seg.id === state.mainseg ? ` · ${t('Hauptsegment')}` : ''}
           </span>
         </button>
-        <Toggle checked={seg.on} label="Segment ein/aus" onChange={(v) => sendSeg({ on: v })} />
-        <button className="icon-btn" onClick={() => setOpen((o) => !o)} aria-label={open ? 'Zuklappen' : 'Bearbeiten'}>
+        <Toggle checked={seg.on} label={t('Segment ein/aus')} onChange={(v) => sendSeg({ on: v })} />
+        <button className="icon-btn" onClick={() => setOpen((o) => !o)} aria-label={open ? t('Zuklappen') : t('Bearbeiten')}>
           <Icon name="chevron" style={{ transform: open ? 'rotate(180deg)' : undefined }} />
         </button>
       </div>
@@ -121,40 +122,40 @@ function SegmentCard({
       </div>
       <div className="seg-bri">
         <Icon name="sun" size={14} />
-        <Slider value={seg.bri} min={0} label="Segment-Helligkeit" onChange={(v) => sendSeg({ bri: v }, `seg${seg.id}-bri`)} />
-        <span className="val">{seg.bri ? `${pct(seg.bri)} %` : '0 %'}</span>
+        <Slider value={seg.bri} min={0} label={t('Segment-Helligkeit')} onChange={(v) => sendSeg({ bri: v }, `seg${seg.id}-bri`)} />
+        <span className="val">{t('{n} %', { n: seg.bri ? pct(seg.bri) : 0 })}</span>
       </div>
       {open && (
         <div className="seg-edit">
           <div className="grid-fields">
             <label className="field wide">
-              <span>Name</span>
-              <input value={form.n} placeholder={`Segment ${seg.id}`} onChange={(e) => set('n')(e.target.value)} />
+              <span>{t('Name')}</span>
+              <input value={form.n} placeholder={t('Segment {id}', { id: seg.id })} onChange={(e) => set('n')(e.target.value)} />
             </label>
-            <NumField label="Erste LED" value={form.start} onChange={set('start')} />
-            <NumField label="Ende (exklusiv)" value={form.stop} onChange={set('stop')} />
-            <NumField label="Gruppierung" value={form.grp} onChange={set('grp')} min={1} />
-            <NumField label="Abstand" value={form.spc} onChange={set('spc')} />
-            <NumField label="Versatz" value={form.of} onChange={set('of')} />
-            {matrix && <NumField label="Start Y" value={form.startY} onChange={set('startY')} />}
-            {matrix && <NumField label="Ende Y" value={form.stopY} onChange={set('stopY')} />}
+            <NumField label={key('Erste LED')} value={form.start} onChange={set('start')} />
+            <NumField label={key('Ende (exklusiv)')} value={form.stop} onChange={set('stop')} />
+            <NumField label={key('Gruppierung')} value={form.grp} onChange={set('grp')} min={1} />
+            <NumField label={key('Abstand')} value={form.spc} onChange={set('spc')} />
+            <NumField label={key('Versatz')} value={form.of} onChange={set('of')} />
+            {matrix && <NumField label={key('Start Y')} value={form.startY} onChange={set('startY')} />}
+            {matrix && <NumField label={key('Ende Y')} value={form.stopY} onChange={set('stopY')} />}
           </div>
           <div className="seg-flags">
             <Check checked={seg.rev} onChange={(v) => sendSeg({ rev: v })}>
-              Umkehren
+              {t('Umkehren')}
             </Check>
             <Check checked={seg.mi} onChange={(v) => sendSeg({ mi: v })}>
-              Spiegeln
+              {t('Spiegeln')}
             </Check>
             <Check checked={seg.frz} onChange={(v) => sendSeg({ frz: v })}>
-              Einfrieren
+              {t('Einfrieren')}
             </Check>
           </div>
           {error && <p className="error">{error}</p>}
           <div className="row-actions">
             <button className="btn danger" disabled={state.seg.length <= 1} onClick={remove}>
               <Icon name="trash" size={15} />
-              Löschen
+              {t('Löschen')}
             </button>
             <span className="spacer" />
             {dirty && (
@@ -166,11 +167,11 @@ function SegmentCard({
                   setError('');
                 }}
               >
-                Verwerfen
+                {t('Verwerfen')}
               </button>
             )}
             <button className="btn primary" disabled={!dirty} onClick={apply}>
-              Übernehmen
+              {t('Übernehmen')}
             </button>
           </div>
         </div>
@@ -197,33 +198,33 @@ function AddSegment({ device, state, count, onDone }: { device: DeviceSnapshot; 
     const a = Math.round(Number(start));
     const b = Math.round(Number(stop));
     if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b > count || b <= a) {
-      setError(`Start muss kleiner als Ende sein, Ende höchstens ${count}.`);
+      setError(t('Start muss kleiner als Ende sein, Ende höchstens {count}.', { count }));
       return;
     }
     const seg: Record<string, unknown> = { id, start: a, stop: b };
     if (name.trim()) seg.n = name.trim();
     send(device.id, { seg });
-    toast(`Segment ${id} angelegt`);
+    toast(t('Segment {id} angelegt', { id }));
     onDone();
   };
   return (
     <div className="seg-card new">
       <div className="grid-fields">
         <label className="field wide">
-          <span>Name (optional)</span>
-          <input value={name} placeholder={`Segment ${id}`} onChange={(e) => setName(e.target.value)} />
+          <span>{t('Name (optional)')}</span>
+          <input value={name} placeholder={t('Segment {id}', { id })} onChange={(e) => setName(e.target.value)} />
         </label>
-        <NumField label="Erste LED" value={start} onChange={setStart} />
-        <NumField label="Ende (exklusiv)" value={stop} onChange={setStop} />
+        <NumField label={key('Erste LED')} value={start} onChange={setStart} />
+        <NumField label={key('Ende (exklusiv)')} value={stop} onChange={setStop} />
       </div>
       {error && <p className="error">{error}</p>}
       <div className="row-actions">
         <span className="spacer" />
         <button className="btn ghost" onClick={onDone}>
-          Abbrechen
+          {t('Abbrechen')}
         </button>
         <button className="btn primary" onClick={create}>
-          Segment anlegen
+          {t('Segment anlegen')}
         </button>
       </div>
     </div>
@@ -245,7 +246,7 @@ export function SegmentsTab({ device, state }: { device: DeviceSnapshot; state: 
   };
 
   const reset = () => {
-    if (!window.confirm('Alle Segmente entfernen und ein einziges über die ganze Länge anlegen?')) return;
+    if (!window.confirm(t('Alle Segmente entfernen und ein einziges über die ganze Länge anlegen?'))) return;
     const seg = [
       { id: 0, start: 0, stop: count, sel: true, on: true },
       ...state.seg.filter((s) => s.id !== 0).map((s) => ({ id: s.id, stop: 0 })),
@@ -257,7 +258,7 @@ export function SegmentsTab({ device, state }: { device: DeviceSnapshot; state: 
     <div className="segments">
       <div className="seg-toolbar">
         <label className="inline-field">
-          <span>Übergang</span>
+          <span>{t('Übergang')}</span>
           <input
             value={trans}
             inputMode="decimal"
@@ -270,17 +271,19 @@ export function SegmentsTab({ device, state }: { device: DeviceSnapshot; state: 
           <span className="muted">s</span>
         </label>
         <span className="muted small">
-          {count} LEDs · {state.seg.length} {state.seg.length === 1 ? 'Segment' : 'Segmente'} · Farben und Effekte gelten für
-          die ausgewählten Segmente
+          {t('{count} LEDs · {segments} · Farben und Effekte gelten für die ausgewählten Segmente', {
+            count,
+            segments: state.seg.length === 1 ? t('1 Segment') : t('{n} Segmente', { n: state.seg.length }),
+          })}
         </span>
         <span className="spacer" />
         <button className="btn ghost" onClick={reset}>
           <Icon name="refresh" size={15} />
-          Zurücksetzen
+          {t('Zurücksetzen')}
         </button>
         <button className="btn primary" onClick={() => setAdding(true)} disabled={adding}>
           <Icon name="plus" size={15} />
-          Segment
+          {t('Segment')}
         </button>
       </div>
       {adding && <AddSegment device={device} state={state} count={count} onDone={() => setAdding(false)} />}

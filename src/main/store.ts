@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   startWithWindows: false,
   liveView: false,
   theme: 'system',
+  language: 'system',
 };
 
 function readJson<T>(file: string, fallback: T): T {

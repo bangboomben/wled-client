@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { t } from '../../../shared/i18n';
 import type { DeviceSnapshot, DeviceStatic, Presets, WledPlaylist, WledPreset, WledState } from '../../../shared/types';
 import { send, wled } from '../../lib/store';
 import { Check, Modal, SearchInput, toast } from '../controls';
@@ -41,7 +42,7 @@ function apiText(p: WledPreset | undefined): string {
   return JSON.stringify(o);
 }
 
-const presetName = (p: WledPreset | undefined, id: number) => p?.n || `Preset ${id}`;
+const presetName = (p: WledPreset | undefined, id: number) => p?.n || t('Preset {id}', { id });
 
 function PresetEditor({
   device,
@@ -86,16 +87,16 @@ function PresetEditor({
 
   const save = async () => {
     const n = Number(pid);
-    if (!Number.isInteger(n) || n < 1 || n > 250) return setError('Die ID muss zwischen 1 und 250 liegen.');
-    if (mode !== 'edit' && presets[String(n)] && !window.confirm(`ID ${n} ist schon belegt („${presetName(presets[String(n)], n)}“). Überschreiben?`)) return;
-    const body: Record<string, unknown> = { psave: n, n: name.trim() || `${isPlaylist ? 'Playlist' : 'Preset'} ${n}` };
+    if (!Number.isInteger(n) || n < 1 || n > 250) return setError(t('Die ID muss zwischen 1 und 250 liegen.'));
+    if (mode !== 'edit' && presets[String(n)] && !window.confirm(t('ID {id} ist schon belegt („{name}“). Überschreiben?', { id: n, name: presetName(presets[String(n)], n) }))) return;
+    const body: Record<string, unknown> = { psave: n, n: name.trim() || (isPlaylist ? t('Playlist {id}', { id: n }) : t('Preset {id}', { id: n })) };
     const quick = Array.from(ql.trim()).slice(0, 2).join('');
     if (quick) body.ql = quick;
     if (boot) body.bootps = n;
     else if (wasBoot) body.bootps = 0;
 
     if (isPlaylist) {
-      if (!pl.entries.length) return setError('Die Playlist braucht mindestens einen Eintrag.');
+      if (!pl.entries.length) return setError(t('Die Playlist braucht mindestens einen Eintrag.'));
       const secs = (v: string) => Math.max(0, Math.round((Number(v.replace(',', '.')) || 0) * 10));
       body.playlist = {
         ps: pl.entries.map((e) => e.ps),
@@ -113,13 +114,13 @@ function PresetEditor({
       body.sc = sc;
     } else {
       const raw = api.trim();
-      if (raw.length < 2) return setError('Bitte einen API-Befehl eintragen oder „Aktuellen Zustand speichern“ wählen.');
+      if (raw.length < 2) return setError(t('Bitte einen API-Befehl eintragen oder „Aktuellen Zustand speichern“ wählen.'));
       try {
         const parsed = JSON.parse(raw) as Record<string, unknown>;
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
         for (const [k, v] of Object.entries(parsed)) if (!['psave', 'n', 'ql'].includes(k)) body[k] = v;
       } catch {
-        if (raw.includes('{')) return setError('Der JSON-Befehl ist fehlerhaft.');
+        if (raw.includes('{')) return setError(t('Der JSON-Befehl ist fehlerhaft.'));
         body.win = raw; // HTTP-API-Befehl, z. B. „FX=0&T=1“
       }
       body.o = true;
@@ -128,23 +129,29 @@ function PresetEditor({
     setBusy(true);
     const r = await wled.command(device.id, body);
     setBusy(false);
-    if (!r.ok) return setError(r.error ?? 'Speichern fehlgeschlagen');
-    toast(`„${body.n}“ gespeichert`);
+    if (!r.ok) return setError(r.error ?? t('Speichern fehlgeschlagen'));
+    toast(t('„{name}“ gespeichert', { name: String(body.n) }));
     onClose();
   };
 
   const remove = async () => {
-    if (id === undefined || !window.confirm(`„${presetName(existing, id)}“ löschen?`)) return;
+    if (id === undefined || !window.confirm(t('„{name}“ löschen?', { name: presetName(existing, id) }))) return;
     setBusy(true);
     const r = await wled.command(device.id, { pdel: id });
     setBusy(false);
-    if (!r.ok) return setError(r.error ?? 'Löschen fehlgeschlagen');
-    toast(`„${presetName(existing, id)}“ gelöscht`);
+    if (!r.ok) return setError(r.error ?? t('Löschen fehlgeschlagen'));
+    toast(t('„{name}“ gelöscht', { name: presetName(existing, id) }));
     onClose();
   };
 
   const title =
-    mode === 'edit' ? `${isPlaylist ? 'Playlist' : 'Preset'} bearbeiten` : isPlaylist ? 'Neue Playlist' : 'Zustand als Preset speichern';
+    mode === 'edit'
+      ? isPlaylist
+        ? t('Playlist bearbeiten')
+        : t('Preset bearbeiten')
+      : isPlaylist
+        ? t('Neue Playlist')
+        : t('Zustand als Preset speichern');
 
   return (
     <Modal
@@ -156,41 +163,41 @@ function PresetEditor({
           {mode === 'edit' && (
             <button className="btn danger" onClick={remove} disabled={busy}>
               <Icon name="trash" size={15} />
-              Löschen
+              {t('Löschen')}
             </button>
           )}
           <span className="spacer" />
           <button className="btn ghost" onClick={onClose}>
-            Abbrechen
+            {t('Abbrechen')}
           </button>
           <button className="btn primary" onClick={save} disabled={busy}>
             <Icon name="save" size={15} />
-            Speichern
+            {t('Speichern')}
           </button>
         </>
       }
     >
       <div className="grid-fields two">
         <label className="field wide">
-          <span>Name</span>
-          <input value={name} autoFocus placeholder={`${isPlaylist ? 'Playlist' : 'Preset'} ${pid}`} onChange={(e) => setName(e.target.value)} />
+          <span>{t('Name')}</span>
+          <input value={name} autoFocus placeholder={isPlaylist ? t('Playlist {id}', { id: pid }) : t('Preset {id}', { id: pid })} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="field">
-          <span>ID (1–250)</span>
+          <span>{t('ID (1–250)')}</span>
           <input type="number" min={1} max={250} value={pid} disabled={mode === 'edit'} onChange={(e) => setPid(e.target.value)} />
         </label>
         <label className="field">
-          <span>Quick-Load (1–2 Zeichen)</span>
-          <input value={ql} placeholder="z. B. 1 oder ★" onChange={(e) => setQl(e.target.value)} />
+          <span>{t('Quick-Load (1–2 Zeichen)')}</span>
+          <input value={ql} placeholder={t('z. B. 1 oder ★')} onChange={(e) => setQl(e.target.value)} />
         </label>
       </div>
 
       {isPlaylist ? (
         <div className="playlist-editor">
           <div className="pl-head">
-            <span>Preset</span>
-            <span>Dauer (s)</span>
-            <span>Übergang (s)</span>
+            <span>{t('Preset')}</span>
+            <span>{t('Dauer (s)')}</span>
+            <span>{t('Übergang (s)')}</span>
             <span />
           </div>
           {pl.entries.map((e, i) => (
@@ -206,7 +213,7 @@ function PresetEditor({
               <input inputMode="decimal" value={e.tr} onChange={(ev) => setEntry(i, { tr: ev.target.value })} />
               <button
                 className="icon-btn"
-                aria-label="Eintrag entfernen"
+                aria-label={t('Eintrag entfernen')}
                 disabled={pl.entries.length <= 1}
                 onClick={() => setPl((f) => ({ ...f, entries: f.entries.filter((_, j) => j !== i) }))}
               >
@@ -220,19 +227,19 @@ function PresetEditor({
             onClick={() => setPl((f) => ({ ...f, entries: [...f.entries, { ...f.entries[f.entries.length - 1] }] }))}
           >
             <Icon name="plus" size={14} />
-            Eintrag
+            {t('Eintrag')}
           </button>
-          {!statePresets.length && <p className="error">Lege zuerst normale Presets an — eine Playlist spielt sie nacheinander ab.</p>}
+          {!statePresets.length && <p className="error">{t('Lege zuerst normale Presets an — eine Playlist spielt sie nacheinander ab.')}</p>}
           <div className="grid-fields two">
             <label className="field">
-              <span>Wiederholungen (0 = endlos)</span>
+              <span>{t('Wiederholungen (0 = endlos)')}</span>
               <input type="number" min={0} value={pl.repeat} onChange={(e) => setPl((f) => ({ ...f, repeat: e.target.value }))} />
             </label>
             <label className="field">
-              <span>Danach</span>
+              <span>{t('Danach')}</span>
               <select value={pl.end} onChange={(e) => setPl((f) => ({ ...f, end: Number(e.target.value) }))}>
-                <option value={0}>Nichts (letztes bleibt)</option>
-                <option value={255}>Vorherigen Zustand wiederherstellen</option>
+                <option value={0}>{t('Nichts (letztes bleibt)')}</option>
+                <option value={255}>{t('Vorherigen Zustand wiederherstellen')}</option>
                 {statePresets.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.id} · {p.name}
@@ -242,41 +249,41 @@ function PresetEditor({
             </label>
           </div>
           <Check checked={pl.shuffle} onChange={(v) => setPl((f) => ({ ...f, shuffle: v }))}>
-            Zufällige Reihenfolge
+            {t('Zufällige Reihenfolge')}
           </Check>
         </div>
       ) : (
         <div className="preset-mode">
           <div className="seg-switch" role="radiogroup">
             <button role="radio" aria-checked={useCurrent} className={useCurrent ? 'on' : ''} onClick={() => setUseCurrent(true)}>
-              Aktuellen Zustand speichern
+              {t('Aktuellen Zustand speichern')}
             </button>
             <button role="radio" aria-checked={!useCurrent} className={!useCurrent ? 'on' : ''} onClick={() => setUseCurrent(false)}>
-              API-Befehl
+              {t('API-Befehl')}
             </button>
           </div>
           {useCurrent ? (
             <div className="check-list">
               <Check checked={ib} onChange={setIb}>
-                Helligkeit mitspeichern
+                {t('Helligkeit mitspeichern')}
               </Check>
               <Check checked={sb} onChange={setSb}>
-                Segmentgrenzen mitspeichern
+                {t('Segmentgrenzen mitspeichern')}
               </Check>
               <Check checked={sc} onChange={setSc}>
-                Nur ausgewählte Segmente
+                {t('Nur ausgewählte Segmente')}
               </Check>
             </div>
           ) : (
             <label className="field">
-              <span>JSON- oder HTTP-API-Befehl</span>
+              <span>{t('JSON- oder HTTP-API-Befehl')}</span>
               <textarea rows={6} spellCheck={false} className="mono" value={api} onChange={(e) => setApi(e.target.value)} placeholder='{"on":true,"bri":128}' />
             </label>
           )}
         </div>
       )}
       <Check checked={boot} onChange={setBoot}>
-        Beim Gerätestart laden
+        {t('Beim Gerätestart laden')}
       </Check>
       {error && <p className="error">{error}</p>}
     </Modal>
@@ -299,20 +306,20 @@ export function PresetsTab({ device, state, st }: { device: DeviceSnapshot; stat
   return (
     <div className="presets">
       <div className="presets-head">
-        <SearchInput value={q} onChange={setQ} placeholder="Preset suchen" />
+        <SearchInput value={q} onChange={setQ} placeholder={t('Preset suchen')} />
         <span className="spacer" />
         <button className="btn" onClick={() => setEditor({ mode: 'playlist' })}>
           <Icon name="list" size={15} />
-          Neue Playlist
+          {t('Neue Playlist')}
         </button>
         <button className="btn primary" onClick={() => setEditor({ mode: 'new' })}>
           <Icon name="save" size={15} />
-          Aktuellen Zustand speichern
+          {t('Aktuellen Zustand speichern')}
         </button>
       </div>
 
       {quick.length > 0 && (
-        <div className="ql-bar" aria-label="Quick-Load">
+        <div className="ql-bar" aria-label={t('Quick-Load')}>
           {quick.map((e) => (
             <button key={e.id} className={`ql-btn${state.ps === e.id ? ' active' : ''}`} title={presetName(e.p, e.id)} onClick={() => apply(e.id)}>
               {e.p.ql}
@@ -322,11 +329,11 @@ export function PresetsTab({ device, state, st }: { device: DeviceSnapshot; stat
       )}
 
       {!st ? (
-        <p className="muted">Presets werden geladen …</p>
+        <p className="muted">{t('Presets werden geladen …')}</p>
       ) : entries.length === 0 ? (
         <div className="empty small">
           <Icon name="bookmark" size={32} />
-          <p className="muted">Noch keine Presets. „Aktuellen Zustand speichern“ legt das erste an.</p>
+          <p className="muted">{t('Noch keine Presets. „Aktuellen Zustand speichern“ legt das erste an.')}</p>
         </div>
       ) : (
         <div className="preset-grid">
@@ -335,24 +342,24 @@ export function PresetsTab({ device, state, st }: { device: DeviceSnapshot; stat
             const playing = state.pl === e.id;
             return (
               <div key={e.id} className={`preset-card${active ? ' active' : ''}${playing ? ' playing' : ''}`}>
-                <button className="preset-main" onClick={() => apply(e.id)} title="Anwenden">
+                <button className="preset-main" onClick={() => apply(e.id)} title={t('Anwenden')}>
                   <span className="preset-ql">{e.p.ql || <Icon name={e.p.playlist ? 'list' : 'bookmark'} size={16} />}</span>
                   <span className="preset-text">
                     <span className="preset-name">{presetName(e.p, e.id)}</span>
                     <span className="muted small">
                       #{e.id}
-                      {e.p.playlist ? ` · Playlist mit ${e.p.playlist.ps.length} Einträgen` : ''}
-                      {playing ? ' · läuft' : active ? ' · aktiv' : ''}
+                      {e.p.playlist ? ` · ${t('Playlist mit {n} Einträgen', { n: e.p.playlist.ps.length })}` : ''}
+                      {playing ? ` · ${t('läuft')}` : active ? ` · ${t('aktiv')}` : ''}
                     </span>
                   </span>
                 </button>
-                <button className="icon-btn" onClick={() => setEditor({ mode: 'edit', id: e.id })} aria-label="Bearbeiten" title="Bearbeiten">
+                <button className="icon-btn" onClick={() => setEditor({ mode: 'edit', id: e.id })} aria-label={t('Bearbeiten')} title={t('Bearbeiten')}>
                   <Icon name="edit" size={16} />
                 </button>
               </div>
             );
           })}
-          {shown.length === 0 && <p className="muted small">Kein Preset passt zur Suche.</p>}
+          {shown.length === 0 && <p className="muted small">{t('Kein Preset passt zur Suche.')}</p>}
         </div>
       )}
 

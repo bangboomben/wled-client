@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { key, t } from '../../../shared/i18n';
 import type { Color, DeviceSnapshot, DeviceStatic, WledState } from '../../../shared/types';
 import { send } from '../../lib/store';
 import {
@@ -18,19 +19,19 @@ import { ColorWheel } from '../ColorWheel';
 import { Slider } from '../controls';
 
 const QUICK: Array<{ c: Color; label: string }> = [
-  { c: [255, 0, 0], label: 'Rot' },
-  { c: [255, 160, 0], label: 'Orange' },
-  { c: [255, 200, 0], label: 'Gelb' },
-  { c: [255, 224, 160], label: 'Warmweiß' },
-  { c: [255, 255, 255], label: 'Weiß' },
-  { c: [0, 0, 0], label: 'Schwarz (aus)' },
-  { c: [255, 0, 220], label: 'Pink' },
-  { c: [0, 0, 255], label: 'Blau' },
-  { c: [0, 255, 200], label: 'Türkis' },
-  { c: [8, 255, 0], label: 'Grün' },
+  { c: [255, 0, 0], label: key('Rot') },
+  { c: [255, 160, 0], label: key('Orange') },
+  { c: [255, 200, 0], label: key('Gelb') },
+  { c: [255, 224, 160], label: key('Warmweiß') },
+  { c: [255, 255, 255], label: key('Weiß') },
+  { c: [0, 0, 0], label: key('Schwarz (aus)') },
+  { c: [255, 0, 220], label: key('Pink') },
+  { c: [0, 0, 255], label: key('Blau') },
+  { c: [0, 255, 200], label: key('Türkis') },
+  { c: [8, 255, 0], label: key('Grün') },
 ];
 
-const SLOT_NAMES = ['Farbe 1', 'Farbe 2', 'Farbe 3'];
+const SLOT_NAMES = [key('Farbe 1'), key('Farbe 2'), key('Farbe 3')];
 
 export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state: WledState; st: DeviceStatic | null }) {
   const seg = viewSeg(state);
@@ -77,13 +78,13 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
         <ColorWheel color={rgb} onChange={setRgb} />
         <div className="field">
           <span>
-            Farbhelligkeit <span className="val">{Math.round(v * 100)} %</span>
+            {t('Farbhelligkeit')} <span className="val">{t('{n} %', { n: Math.round(v * 100) })}</span>
           </span>
           <Slider
             variant="gradient"
             track={`linear-gradient(90deg, #000, ${rgbCss(hsvToRgb(h, s, 1))})`}
             value={Math.round(v * 255)}
-            label="Farbhelligkeit"
+            label={t('Farbhelligkeit')}
             onChange={(nv) => setRgb(hsvToRgb(h, s, nv / 255))}
           />
         </div>
@@ -92,8 +93,8 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
       <div className="color-side">
         <section className="panel">
           <div className="panel-head">
-            <h3>Farbslots</h3>
-            <span className="muted small">Welche Slots ein Effekt nutzt, legt der Effekt fest.</span>
+            <h3>{t('Farbslots')}</h3>
+            <span className="muted small">{t('Welche Slots ein Effekt nutzt, legt der Effekt fest.')}</span>
           </div>
           <div className="slots">
             {[0, 1, 2].map((i) => {
@@ -103,11 +104,11 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
                   key={i}
                   className={`slot${i === activeSlot ? ' active' : ''}`}
                   disabled={!used}
-                  title={used ? used.label : 'Vom aktuellen Effekt nicht genutzt'}
+                  title={used ? t(used.label) : t('Vom aktuellen Effekt nicht genutzt')}
                   onClick={() => setSlot(i)}
                 >
                   <span className="swatch" style={{ background: displayColor(seg.col[i]) }} />
-                  <span className="slot-label">{used?.label ?? SLOT_NAMES[i]}</span>
+                  <span className="slot-label">{t(used?.label ?? SLOT_NAMES[i])}</span>
                 </button>
               );
             })}
@@ -120,7 +121,7 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
                 value={hex}
                 maxLength={7}
                 spellCheck={false}
-                aria-label="Hex-Farbwert"
+                aria-label={t('Hex-Farbwert')}
                 onChange={(e) => setHex(e.target.value.replace('#', ''))}
                 onBlur={commitHex}
                 onKeyDown={(e) => {
@@ -136,24 +137,24 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
         </section>
 
         <section className="panel">
-          {(['Rot', 'Grün', 'Blau'] as const).map((label, i) => (
+          {[key('Rot'), key('Grün'), key('Blau')].map((label, i) => (
             <div className="field" key={label}>
               <span>
-                {label} <span className="val">{rgb[i]}</span>
+                {t(label)} <span className="val">{rgb[i]}</span>
               </span>
-              <Slider variant="gradient" track={channelTrack(i)} value={rgb[i]} label={label} onChange={(nv) => setChannel(i, nv)} />
+              <Slider variant="gradient" track={channelTrack(i)} value={rgb[i]} label={t(label)} onChange={(nv) => setChannel(i, nv)} />
             </div>
           ))}
           {rgbw && (
             <div className="field">
               <span>
-                Weiß (W-Kanal) <span className="val">{w}</span>
+                {t('Weiß (W-Kanal)')} <span className="val">{w}</span>
               </span>
               <Slider
                 variant="gradient"
                 track="linear-gradient(90deg, #2a2620, #fff3d6)"
                 value={w}
-                label="Weißkanal"
+                label={t('Weißkanal')}
                 onChange={(nv) => sendColor([...rgb, nv])}
               />
             </div>
@@ -161,13 +162,13 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
           {caps.cct && (
             <div className="field">
               <span>
-                Farbtemperatur <span className="val">{seg.cct}</span>
+                {t('Farbtemperatur')} <span className="val">{seg.cct}</span>
               </span>
               <Slider
                 variant="gradient"
                 track="linear-gradient(90deg, #ff9d3c, #fff1dc, #cfe0ff)"
                 value={seg.cct}
-                label="Farbtemperatur"
+                label={t('Farbtemperatur')}
                 onChange={(nv) => send(device.id, segPatch(state, { cct: nv }), 'cct')}
               />
             </div>
@@ -176,17 +177,17 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
 
         <section className="panel">
           <div className="panel-head">
-            <h3>Schnellfarben</h3>
+            <h3>{t('Schnellfarben')}</h3>
           </div>
           <div className="quick">
             {QUICK.map((q) => (
-              <button key={q.label} className="quick-btn" title={q.label} aria-label={q.label} style={{ background: rgbCss(q.c) }} onClick={() => setRgb(q.c)} />
+              <button key={q.label} className="quick-btn" title={t(q.label)} aria-label={t(q.label)} style={{ background: rgbCss(q.c) }} onClick={() => setRgb(q.c)} />
             ))}
             {rgbw && (
               <button
                 className="quick-btn quick-w"
-                title="Reines Weiß über den W-Kanal"
-                aria-label="Reines Weiß über den W-Kanal"
+                title={t('Reines Weiß über den W-Kanal')}
+                aria-label={t('Reines Weiß über den W-Kanal')}
                 onClick={() => sendColor([0, 0, 0, 255])}
               >
                 W
@@ -194,8 +195,8 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
             )}
             <button
               className="quick-btn quick-random"
-              title="Zufällige Farbe"
-              aria-label="Zufällige Farbe"
+              title={t('Zufällige Farbe')}
+              aria-label={t('Zufällige Farbe')}
               onClick={() => setRgb(hsvToRgb(Math.random() * 360, 0.7 + Math.random() * 0.3, 1))}
             >
               ?
