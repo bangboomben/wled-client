@@ -14,5 +14,76 @@
     "url": "https://github.com/bangboomben/wled-client/issues"
   },
   "private": true,
-  "main": "dist-electron/main.cjs"
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/build.mjs && electron .",
+    "dev": "node scripts/dev.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "mock": "node --no-warnings scripts/mock-wled.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
+    "icons": "python scripts/make-icons.py",
+    "dist": "node scripts/build.mjs && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "io.github.bangboomben.wled-client",
+    "productName": "WLED Client",
+    "copyright": "Copyright © 2026 bangboomben",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "resources/*.ico",
+      "package.json",
+      "LICENSE"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.ico",
+      "artifactName": "WLED-Client-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "WLED Client",
+      "uninstallDisplayName": "WLED Client",
+      "installerLanguages": [
+        "en_US",
+        "de_DE"
+      ],
+      "runAfterFinish": true,
+      "guid": "57a12b46-d793-5a6a-93db-530cd31bbec4"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.63.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "ws": "^8.22.0"
+  }
 }
