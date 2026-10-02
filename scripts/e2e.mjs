@@ -398,7 +398,11 @@ try {
     const slider = win.locator('.group-row:has-text("E2E Gruppe") .slider');
     await api(PORTS.desk, '/json/state', { on: true, bri: 200 });
     await api(PORTS.bedroom, '/json/state', { on: true, bri: 100 });
-    await win.waitForFunction(() => document.querySelector('.group-row .slider')?.value === '200');
+    await win.waitForFunction(() => {
+      const bri = (name) =>
+        [...document.querySelectorAll('.device-row')].find((r) => r.querySelector('.device-name')?.textContent === name)?.querySelector('.slider')?.value;
+      return bri('Mock Desk') === '200' && bri('Mock Bedroom') === '100';
+    });
     await slider.fill('100');
     await waitFor(async () => (await state(PORTS.desk)).bri === 100 && (await state(PORTS.bedroom)).bri === 50, 'Desk 100, Bedroom 50');
     await win.waitForTimeout(1000); // Zug ist nach 800 ms ohne Änderung beendet
