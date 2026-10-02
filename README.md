@@ -121,6 +121,7 @@ Requires Node.js ≥ 22 (Python with Pillow only to regenerate icons).
 npm install
 npm run dev          # Vite with hot reload + Electron (restarts on main-process changes)
 npm run typecheck
+npm test             # unit tests (Vitest); npm run test:watch while developing
 npm run i18n         # every UI text needs an English translation (src/shared/i18n-en.ts)
 npm run build        # dist-electron/ (main, preload) + dist/renderer/ (UI)
 npm run dist         # build + Windows installer into release/

@@ -13,7 +13,8 @@ function* files(dir) {
   for (const name of readdirSync(dir)) {
     const p = path.join(dir, name);
     if (statSync(p).isDirectory()) yield* files(p);
-    else if (/\.(ts|tsx)$/.test(name) && !name.startsWith('i18n')) yield p;
+    // Tests (*.test.ts) enthalten keine Oberflächentexte.
+    else if (/\.(ts|tsx)$/.test(name) && !/\.test\.ts$/.test(name) && !name.startsWith('i18n')) yield p;
   }
 }
 
