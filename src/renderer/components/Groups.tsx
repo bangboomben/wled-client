@@ -61,14 +61,36 @@ export function useGroupControls(members: DeviceSnapshot[]): {
 }
 
 /** Eine Gruppe: Ein/Aus und anteilige Helligkeit für alle Mitglieder — in Seitenleiste und Tray-Fenster. */
-export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devices: DeviceSnapshot[]; onEdit?: (id: string) => void }) {
+export function GroupRow({
+  group,
+  devices,
+  active,
+  onSelect,
+  onEdit,
+}: {
+  group: DeviceGroup;
+  devices: DeviceSnapshot[];
+  active?: boolean;
+  onSelect?: (id: string) => void;
+  onEdit?: (id: string) => void;
+}) {
   const members = groupMembers(group, devices);
   const c = useGroupControls(members);
   const memberLine = memberText(members);
 
   return (
     <div
-      className={`group-row${c.usable ? '' : ' offline'}`}
+      className={`group-row${c.usable ? '' : ' offline'}${active ? ' active' : ''}${onSelect ? ' selectable' : ''}`}
+      tabIndex={onSelect ? 0 : undefined}
+      aria-current={active || undefined}
+      onClick={onSelect ? () => onSelect(group.id) : undefined}
+      onKeyDown={
+        onSelect
+          ? (e) => {
+              if (e.key === 'Enter' && e.target === e.currentTarget) onSelect(group.id);
+            }
+          : undefined
+      }
       onContextMenu={
         onEdit
           ? (e) => {
@@ -86,7 +108,6 @@ export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devic
         </div>
       </div>
       <Toggle checked={c.view.lit} disabled={!c.usable} label={t('Gruppe {name} ein- oder ausschalten', { name: group.name })} onChange={c.setPower} />
-      {/* Capture-Phase: Der Regler hält pointerdown selbst an. */}
       <div className="row-slider" onPointerDownCapture={c.onPointerDownCapture}>
         <Slider
           variant="mini"

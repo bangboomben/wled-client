@@ -148,6 +148,28 @@ export function useStatic(device: DeviceSnapshot | undefined): DeviceStatic | nu
   return cached?.data ?? null;
 }
 
+/** Wie useStatic, für mehrere Geräte auf einmal (Reihenfolge wie `devices`). */
+export function useStatics(devices: DeviceSnapshot[]): Array<DeviceStatic | null> {
+  const [, force] = useState(0);
+  const key = devices.map((d) => `${d.id}:${d.staticRev}`).join('|');
+  useEffect(() => {
+    let cancelled = false;
+    for (const d of devices) {
+      const rev = d.staticRev;
+      if (rev < 1 || staticCache.get(d.id)?.rev === rev) continue;
+      void wled.getStatic(d.id).then((data) => {
+        if (cancelled || !data) return;
+        staticCache.set(d.id, { rev, data });
+        force((n) => n + 1);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+  return devices.map((d) => staticCache.get(d.id)?.data ?? null);
+}
+
 const palxCache = new Map<string, { rev: number; data: Record<string, PalxEntry> }>();
 
 export function usePalx(device: DeviceSnapshot | undefined, enabled: boolean): Record<string, PalxEntry> | null {

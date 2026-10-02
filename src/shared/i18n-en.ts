@@ -392,4 +392,12 @@ export const EN: Record<string, string> = {
   'Effekt, Palette, Farben und Effekt-Regler. Helligkeit und An/Aus bleiben, wie sie sind.':
     'Effect, palette, colors and effect sliders. Brightness and on/off stay as they are.',
   'Nicht übernommen': 'Not applied',
+
+  // Gruppenansicht
+  'Gruppe · 1 Gerät': 'Group · 1 device',
+  'Gruppe · {n} Geräte': 'Group · {n} devices',
+  'Diese Gruppe hat keine Geräte.': 'This group has no devices.',
+  'Kein Gerät der Gruppe ist erreichbar.': 'No device of this group is reachable.',
+  'Eigene Palette': 'Custom palette',
+  'Öffnen': 'Open',
 };

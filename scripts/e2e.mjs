@@ -578,6 +578,55 @@ try {
     await api(PORTS.desk, '/json/state', { seg: [{ id: 0, pal: 0 }] });
   });
 
+  await step('Gruppenansicht: Klick auf die Gruppe zeigt Kopf und Mitglieder', async () => {
+    await win.click('.group-row:has-text("E2E Gruppe") .device-name');
+    await win.waitForFunction(() => document.querySelector('.group-view .device-title')?.textContent === 'E2E Gruppe');
+    const cards = await win.$$eval('.member-card .device-name', (els) => els.map((e) => e.textContent));
+    expect(cards.join('|') === 'Mock Desk|Mock Bedroom', `Karten: ${cards}`);
+    expect(await win.locator('.group-row:has-text("E2E Gruppe")').evaluate((el) => el.classList.contains('active')), 'Gruppenzeile nicht markiert');
+    const eff = await api(PORTS.desk, '/json/eff');
+    const fxName = eff[(await state(PORTS.desk)).seg[0].fx];
+    await win.waitForFunction((n) => document.querySelector('.member-card .member-look')?.textContent?.includes(n), fxName, { timeout: 5000 });
+    // Ein/Aus im Kopf wie der Gruppenschalter: alle aus, dann alle an
+    await api(PORTS.desk, '/json/state', { on: true });
+    await win.waitForFunction(() => document.querySelector('.group-view .power-btn')?.getAttribute('aria-pressed') === 'true');
+    await win.click('.group-view .power-btn');
+    await waitFor(async () => !(await state(PORTS.desk)).on && !(await state(PORTS.bedroom)).on, 'beide aus');
+    await win.click('.group-view .power-btn');
+    await waitFor(async () => (await state(PORTS.desk)).on && (await state(PORTS.bedroom)).on, 'beide an');
+  });
+
+  await step('Gruppenansicht: bleibt nach Neuladen gewählt, „Öffnen →“ springt zum Gerät', async () => {
+    await win.waitForTimeout(700); // die Auswahl wird nach 400 ms gespeichert
+    await win.reload();
+    await win.waitForFunction(() => document.querySelector('.group-view .device-title')?.textContent === 'E2E Gruppe', null, { timeout: 8000 });
+    await win.click('.member-card:has-text("Mock Bedroom") .link-btn');
+    await win.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Bedroom');
+    expect(!(await win.$('.group-view')), 'Gruppenansicht ist noch zu sehen');
+  });
+
+  await step('Gruppenansicht: Strg+1 und Tray wählen ein Gerät, gelöschte Gruppe fällt auf ein Gerät zurück', async () => {
+    await win.click('.group-row:has-text("E2E Gruppe") .device-name');
+    await win.waitForSelector('.group-view');
+    await win.keyboard.press('Control+1');
+    await win.waitForFunction(() => !document.querySelector('.group-view') && document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    await win.click('.group-row:has-text("E2E Gruppe") .device-name');
+    await win.waitForSelector('.group-view');
+    await fly.click('.flyout-row:has-text("Mock Bedroom") .device-meta');
+    await win.waitForFunction(() => !document.querySelector('.group-view') && document.querySelector('.device-title')?.textContent === 'Mock Bedroom');
+    // Vorübergehende Gruppe anlegen, wählen, löschen
+    await win.click('.sidebar-foot .btn:has-text("Gruppe")');
+    await win.fill('.modal .group-name input', 'Wegwerf');
+    await win.click('.modal .check:has-text("Mock Desk")');
+    await win.click('.modal .btn.primary');
+    await win.click('.group-row:has-text("Wegwerf") .device-name');
+    await win.waitForFunction(() => document.querySelector('.group-view .device-title')?.textContent === 'Wegwerf');
+    win.once('dialog', (d) => d.accept());
+    await win.click('.group-row:has-text("Wegwerf")', { button: 'right' });
+    await win.click('.modal .btn.danger');
+    await win.waitForFunction(() => !document.querySelector('.group-view') && !!document.querySelector('.device-view .device-title'));
+  });
+
   await step('Dialog sucht beim Öffnen per mDNS', async () => {
     await win.click('.sidebar-foot .btn:has-text("Gerät")');
     await win.waitForFunction(() => document.querySelectorAll('.scan-row').length === 3, null, { timeout: 8000 });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { t } from '../shared/i18n';
 import { DeviceView } from './components/DeviceView';
+import { GroupView } from './components/GroupView';
 import { AddDeviceDialog, AppSettingsDialog, DeviceEditDialog, GroupDialog, ScanProgressBar } from './components/dialogs';
 import { Toasts } from './components/controls';
 import { Icon, Logo } from './components/Icon';
@@ -51,18 +52,36 @@ export function App() {
   const devices = useDevices();
   const groups = useGroups();
   const [selectedId, setSelectedId] = useState<string | undefined>(() => store.settings.selectedId);
+  const [groupId, setGroupId] = useState<string | undefined>(() => store.settings.selectedGroupId || undefined);
   const [dialog, setDialog] = useState<Dialog>(null);
   const selected = devices.find((d) => d.id === selectedId) ?? devices[0];
   const selectedKey = selected?.id;
+  const selectedGroup = groupId ? groups.find((g) => g.id === groupId) : undefined;
+  // Ein Gerät zu wählen heißt auch, die Gruppenansicht zu verlassen.
+  const selectDevice = (id: string) => {
+    setGroupId(undefined);
+    setSelectedId(id);
+  };
 
-  useEffect(() => wled.onSelect((id) => setSelectedId(id)), []);
+  useEffect(() => wled.onSelect((id) => selectDevice(id)), []);
 
   useEffect(() => {
-    wled.setLiveView(selectedKey ?? null);
+    wled.setLiveView(selectedGroup ? null : (selectedKey ?? null));
     if (!selectedKey || selectedKey === store.settings.selectedId) return;
     const t = window.setTimeout(() => void wled.setSettings({ selectedId: selectedKey }), 400);
     return () => window.clearTimeout(t);
-  }, [selectedKey]);
+  }, [selectedKey, selectedGroup?.id]);
+
+  // Gibt es die gewählte Gruppe nicht mehr (gelöscht), gilt wieder das Gerät.
+  useEffect(() => {
+    if (groupId && !groups.some((g) => g.id === groupId)) setGroupId(undefined);
+  }, [groupId, groups]);
+
+  useEffect(() => {
+    if ((groupId ?? '') === (store.settings.selectedGroupId ?? '')) return;
+    const timer = window.setTimeout(() => void wled.setSettings({ selectedGroupId: groupId ?? '' }), 400);
+    return () => window.clearTimeout(timer);
+  }, [groupId]);
 
   // Strg+1…9 wählt ein Gerät, Strg+↑/↓ blättert.
   useEffect(() => {
@@ -72,13 +91,13 @@ export function App() {
         const d = devices[Number(e.key) - 1];
         if (d) {
           e.preventDefault();
-          setSelectedId(d.id);
+          selectDevice(d.id);
         }
       } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         const i = Math.max(0, devices.findIndex((d) => d.id === selectedKey));
         const next = devices[(i + (e.key === 'ArrowDown' ? 1 : devices.length - 1)) % devices.length];
-        setSelectedId(next.id);
+        selectDevice(next.id);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -87,7 +106,7 @@ export function App() {
 
   // Akzentfarbe = aktuelle Farbe des gewählten Geräts. Sie sitzt am Wurzelelement, damit
   // die abgeleiteten Töne (--accent-soft) mitziehen und auch Dialoge sie erben.
-  const accent = accentFor(selected);
+  const accent = accentFor(selectedGroup ? undefined : selected);
   useEffect(() => {
     const root = document.documentElement.style;
     root.setProperty('--accent', accent.accent);
@@ -104,8 +123,10 @@ export function App() {
       <Sidebar
         devices={devices}
         groups={groups}
-        selectedId={selectedKey}
-        onSelect={setSelectedId}
+        selectedId={selectedGroup ? undefined : selectedKey}
+        onSelect={selectDevice}
+        selectedGroupId={selectedGroup?.id}
+        onSelectGroup={setGroupId}
         onAdd={() => setDialog({ type: 'add' })}
         onAddGroup={() => setDialog({ type: 'group' })}
         onSettings={() => setDialog({ type: 'settings' })}
@@ -113,13 +134,21 @@ export function App() {
         onEditGroup={(id) => setDialog({ type: 'group', id })}
       />
       <main className="main">
-        {selected ? (
+        {selectedGroup ? (
+          <GroupView
+            key={selectedGroup.id}
+            group={selectedGroup}
+            devices={devices}
+            onEdit={() => setDialog({ type: 'group', id: selectedGroup.id })}
+            onOpen={selectDevice}
+          />
+        ) : selected ? (
           <DeviceView key={selected.id} device={selected} onEdit={() => setDialog({ type: 'edit', id: selected.id })} />
         ) : (
           <Welcome onAdd={() => setDialog({ type: 'add' })} />
         )}
       </main>
-      {dialog?.type === 'add' && <AddDeviceDialog onClose={() => setDialog(null)} onAdded={(id) => setSelectedId(id)} />}
+      {dialog?.type === 'add' && <AddDeviceDialog onClose={() => setDialog(null)} onAdded={(id) => selectDevice(id)} />}
       {editDevice && <DeviceEditDialog device={editDevice} onClose={() => setDialog(null)} />}
       {dialog?.type === 'settings' && <AppSettingsDialog onClose={() => setDialog(null)} />}
       {groupDialogOpen && <GroupDialog group={editGroup} devices={devices} onClose={() => setDialog(null)} />}
