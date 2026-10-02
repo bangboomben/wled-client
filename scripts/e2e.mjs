@@ -190,6 +190,23 @@ try {
     await win.waitForSelector('.preset-card:has-text("E2E Blau")', { state: 'detached', timeout: 5000 });
   });
 
+  await step('Kaputte Presets reißen die Oberfläche nicht mit', async () => {
+    const good = await api(PORTS.desk, '/presets.json');
+    await api(PORTS.desk, '/__presets', {
+      ...good,
+      90: { n: 123, ql: 7, playlist: {} },
+      91: { n: { x: 1 }, playlist: { ps: 'kaputt' } },
+      92: 'kein Objekt',
+    });
+    await win.waitForFunction(() => [...document.querySelectorAll('.preset-name')].some((e) => e.textContent === '123'), null, {
+      timeout: 6000,
+    });
+    expect(!(await win.$('.error-boundary')), 'Fehleranzeige statt Presets');
+    const ids = await win.$$eval('.preset-card .muted', (els) => els.map((e) => e.textContent));
+    expect(ids.some((s) => s.startsWith('#91')) && !ids.some((s) => s.startsWith('#92')), `Presets: ${ids}`);
+    await api(PORTS.desk, '/__presets', good);
+  });
+
   await step('Playlist anlegen', async () => {
     await win.click('.presets-head .btn:has-text("Playlist")');
     await win.fill('.modal input >> nth=0', 'E2E Playlist');

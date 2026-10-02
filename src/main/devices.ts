@@ -13,7 +13,6 @@ export class DeviceManager extends EventEmitter {
   private order: string[] = [];
   private pendingUpdates = new Set<string>();
   private flushTimer: NodeJS.Timeout | null = null;
-  private liveId: string | null = null;
 
   constructor(private store: Store) {
     super();
@@ -109,17 +108,14 @@ export class DeviceManager extends EventEmitter {
     conn.removeAllListeners();
     this.conns.delete(id);
     this.order = this.order.filter((x) => x !== id);
-    if (this.liveId === id) this.liveId = null;
     this.listChanged();
   }
 
   async update(id: string, changes: { alias?: string; host?: string }): Promise<CommandResult> {
     const conn = this.conns.get(id);
     if (!conn) return { ok: false, error: t('Gerät nicht gefunden') };
-    if (changes.alias !== undefined) {
-      const alias = changes.alias.trim();
-      conn.config.alias = alias || undefined;
-    }
+    // Erst alles prüfen, dann ändern: Bei einer Fehlermeldung bleibt auch der Name, wie er war.
+    let newHost: string | undefined;
     if (changes.host !== undefined) {
       const host = normalizeHost(changes.host);
       if (!host) return { ok: false, error: t('Adresse fehlt') };
@@ -129,25 +125,28 @@ export class DeviceManager extends EventEmitter {
         } catch {
           return { ok: false, error: t('Unter {host} antwortet kein WLED-Gerät.', { host }) };
         }
-        conn.setHost(host);
+        newHost = host;
       }
     }
+    if (changes.alias !== undefined) conn.config.alias = changes.alias.trim() || undefined;
+    if (newHost) conn.setHost(newHost);
     this.listChanged();
     return { ok: true };
   }
 
   reorder(ids: string[]): void {
-    const known = ids.filter((id) => this.conns.has(id));
+    const known = [...new Set(ids)].filter((id) => this.conns.has(id));
     const rest = this.order.filter((id) => !known.includes(id));
     this.order = [...known, ...rest];
     this.listChanged();
   }
 
-  send(id: string, patch: Record<string, unknown>, key?: string): Promise<CommandResult> {
+  /** `confirm`: Aktion, die erst mit der Antwort des Geräts als erledigt gilt (siehe DeviceConnection.enqueue). */
+  send(id: string, patch: Record<string, unknown>, key?: string, confirm = false): Promise<CommandResult> {
     const conn = this.conns.get(id);
     if (!conn) return Promise.resolve({ ok: false, error: t('Gerät nicht gefunden') });
     conn.applyLocal(patch);
-    const result = conn.enqueue(patch, key);
+    const result = conn.enqueue(patch, key, confirm);
     if (PRESET_KEYS.some((k) => k in patch)) void result.then(() => conn.reloadPresetsSoon());
     return result;
   }
@@ -159,7 +158,6 @@ export class DeviceManager extends EventEmitter {
   }
 
   setLive(id: string | null): void {
-    this.liveId = id;
     for (const conn of this.all()) conn.setLive(conn.id === id);
   }
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { t } from '../../shared/i18n';
 import type { Color } from '../../shared/types';
 import { hsvToRgb, rgbCss, rgbToHsv } from '../lib/wled';
 
@@ -7,12 +8,10 @@ export function ColorWheel({
   color,
   onChange,
   size = 248,
-  disabled,
 }: {
   color: Color;
   onChange: (c: Color) => void;
   size?: number;
-  disabled?: boolean;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [drag, setDrag] = useState<[number, number] | null>(null);
@@ -67,10 +66,9 @@ export function ColorWheel({
 
   return (
     <div
-      className={`wheel${disabled ? ' disabled' : ''}`}
+      className="wheel"
       style={{ width: size, height: size }}
       onPointerDown={(e) => {
-        if (disabled) return;
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         dragging.current = true;
         pick(e.clientX, e.clientY);
@@ -85,7 +83,7 @@ export function ColorWheel({
         }, 800);
       }}
     >
-      <canvas ref={canvas} style={{ width: size, height: size }} aria-label="Farbkreis" role="img" />
+      <canvas ref={canvas} style={{ width: size, height: size }} aria-label={t('Farbkreis')} role="img" />
       <span className="wheel-marker" style={{ left: mx, top: my, background: rgbCss(markerColor) }} />
     </div>
   );

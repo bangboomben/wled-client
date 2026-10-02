@@ -3,7 +3,7 @@ import { key, t } from '../../shared/i18n';
 import type { DevicePage, DeviceSnapshot, WledState } from '../../shared/types';
 import { readLocal, send, useSettings, useStatic, wled, writeLocal } from '../lib/store';
 import { displayColor, pct } from '../lib/wled';
-import { Popover, Slider, Toggle } from './controls';
+import { ErrorBoundary, Popover, Slider, Toggle } from './controls';
 import { InfoDialog } from './dialogs';
 import { Icon } from './Icon';
 import { ColorsTab } from './tabs/ColorsTab';
@@ -207,7 +207,9 @@ export function DeviceView({ device, onEdit }: { device: DeviceSnapshot; onEdit:
     <div className="device-view">
       <header className="titlebar drag">
         <h1 className="device-title">{device.name}</h1>
-        <span className={`pill status-${device.status}`}>{t(STATUS_LABEL[device.status])}</span>
+        <span className={`pill status-${device.status}`} title={device.error}>
+          {t(STATUS_LABEL[device.status])}
+        </span>
         <span className="host">{device.host}</span>
         {(preset || playlist) && (
           <span className="pill preset" title={t('Aktives Preset')}>
@@ -344,10 +346,12 @@ export function DeviceView({ device, onEdit }: { device: DeviceSnapshot; onEdit:
             ))}
           </nav>
           <div className="tab-body" role="tabpanel">
-            {tab === 'colors' && <ColorsTab device={device} state={state} st={st} />}
-            {tab === 'effects' && <EffectsTab device={device} state={state} st={st} />}
-            {tab === 'segments' && <SegmentsTab device={device} state={state} />}
-            {tab === 'presets' && <PresetsTab device={device} state={state} st={st} />}
+            <ErrorBoundary resetKey={`${device.id}/${tab}`}>
+              {tab === 'colors' && <ColorsTab device={device} state={state} st={st} />}
+              {tab === 'effects' && <EffectsTab device={device} state={state} st={st} />}
+              {tab === 'segments' && <SegmentsTab device={device} state={state} />}
+              {tab === 'presets' && <PresetsTab device={device} state={state} st={st} />}
+            </ErrorBoundary>
           </div>
         </div>
       )}

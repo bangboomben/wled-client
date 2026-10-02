@@ -6,22 +6,26 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  dialog,
   screen,
+  session,
   shell,
   type MenuItemConstructorOptions,
+  type WebContents,
 } from 'electron';
 import path from 'node:path';
 import { key, resolveLanguage, setLanguage, t } from '../shared/i18n';
 import type { AppSettings, DevicePage, DeviceSnapshot, ScanResult, UpdateState } from '../shared/types';
 import { DeviceManager } from './devices';
 import { Scanner, localSubnets } from './discovery';
-import { Store } from './store';
+import { Store, cleanSettings } from './store';
 import { Updater } from './updater';
 
 // Für Tests: eigenes Datenverzeichnis, damit eine installierte Instanz unberührt bleibt.
 if (process.env.WLED_CLIENT_USER_DATA) app.setPath('userData', process.env.WLED_CLIENT_USER_DATA);
 
-const DEV_URL = process.env.VITE_DEV_SERVER_URL;
+// Nur in der Entwicklung: Die installierte App lädt ihre Oberfläche nie von einer fremden Adresse.
+const DEV_URL = app.isPackaged ? undefined : process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIR = path.join(__dirname, '../dist/renderer');
 const RESOURCES = path.join(__dirname, '../resources');
 const PRELOAD = path.join(__dirname, 'preload.cjs');
@@ -279,62 +283,105 @@ function createTray(): void {
 
 // ------------------------------------------------------------------ Geräteseiten (WLED-Weboberfläche)
 
+/**
+ * Die Seiten der Geräte kommen aus dem Netzwerk und laufen in einer eigenen Sitzung mit nur den
+ * Rechten, die die WLED-Oberfläche braucht — vor allem ohne „openExternal“, über das eine Seite
+ * andere Programme per Link-Protokoll starten könnte. Die eigenen Fenster brauchen gar keine.
+ */
+const DEVICE_PARTITION = 'persist:device-pages';
+const DEVICE_PERMISSIONS = new Set<string>(['clipboard-sanitized-write', 'local-network-access', 'local-network', 'loopback-network']);
+
+function restrictPermissions(): void {
+  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
+  const pages = session.fromPartition(DEVICE_PARTITION);
+  pages.setPermissionRequestHandler((_wc, permission, callback) => callback(DEVICE_PERMISSIONS.has(permission)));
+  pages.setPermissionCheckHandler((_wc, permission) => DEVICE_PERMISSIONS.has(permission));
+}
+
+/**
+ * Öffnet http(s)-Links aus einer Geräteseite im Browser — aber nur kurz nach einer Eingabe im
+ * Fenster, damit eine Seite nicht von sich aus Browserfenster öffnen kann.
+ */
+function linkOpener(wc: WebContents): (url: string) => void {
+  let lastInput = 0;
+  wc.on('before-input-event', (_e, input) => {
+    if (input.type === 'keyDown') lastInput = Date.now();
+  });
+  wc.on('before-mouse-event', (_e, mouse) => {
+    if (mouse.type === 'mouseDown') lastInput = Date.now();
+  });
+  return (url) => {
+    if (/^https?:\/\//i.test(url) && Date.now() - lastInput < 2000) void shell.openExternal(url);
+  };
+}
+
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
 function openDevicePage(id: string, page: DevicePage): void {
   const conn = manager.get(id);
-  const target = PAGE_PATHS[page];
-  if (!conn || !target) return;
-  const [urlPath, label] = target;
-  const host = conn.host;
+  if (!conn || !Object.hasOwn(PAGE_PATHS, page)) return;
+  const [urlPath, label] = PAGE_PATHS[page];
   let win = pageWindows.get(id);
   if (!win || win.isDestroyed()) {
-    win = new BrowserWindow({
+    const w = new BrowserWindow({
       width: 1040,
       height: 840,
       title: `${conn.displayName} — ${t(label)}`,
       icon: appIcon(),
       autoHideMenuBar: true,
       backgroundColor: '#111111',
-      webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+      webPreferences: { partition: DEVICE_PARTITION, contextIsolation: true, sandbox: true, nodeIntegration: false },
     });
-    win.setMenuBarVisibility(false);
-    win.on('page-title-updated', (e) => e.preventDefault());
-    win.webContents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    w.setMenuBarVisibility(false);
+    w.on('page-title-updated', (e) => e.preventDefault());
+    const openLink = linkOpener(w.webContents);
+    // Die Adresse wird bei jeder Prüfung neu gelesen: Sie kann sich ändern, während das Fenster offen ist.
+    const onDevice = (url: string) => {
+      try {
+        return new URL(url).origin === new URL(`http://${conn.host}`).origin;
+      } catch {
+        return false;
+      }
+    };
+    w.webContents.setWindowOpenHandler(({ url }) => {
+      openLink(url);
       return { action: 'deny' };
     });
-    win.webContents.on('will-navigate', (e, url) => {
-      try {
-        if (new URL(url).host === host) return;
-      } catch {
-        /* ungültige URL */
-      }
+    // Jeder Rahmen (auch iframes) bleibt auf dem Gerät; Links nach außen öffnet der Browser.
+    w.webContents.on('will-frame-navigate', (e) => {
+      if (onDevice(e.url) || e.url === 'about:blank' || e.url === 'about:srcdoc') return;
       e.preventDefault();
-      if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+      if (e.isMainFrame) openLink(e.url);
     });
-    win.on('closed', () => {
+    w.webContents.on('will-redirect', (e) => {
+      if (!onDevice(e.url)) e.preventDefault();
+    });
+    w.webContents.on('did-fail-load', (_e, code, description, _url, isMainFrame) => {
+      // -3: abgebrochen, etwa durch eine neue Navigation oder einen blockierten Link
+      if (!isMainFrame || code === -3) return;
+      const text = t('{host} antwortet nicht ({reason}).', { host: conn.host, reason: description });
+      const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:grid;place-items:center;background:#111;color:#bbb;font:15px 'Segoe UI',sans-serif"><p>${escapeHtml(text)}</p>`;
+      void w.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    });
+    w.on('closed', () => {
       pageWindows.delete(id);
       // Einstellungen können LED-Zahl, Name, Paletten oder Presets geändert haben.
       void conn.loadStatic();
     });
-    pageWindows.set(id, win);
+    pageWindows.set(id, w);
+    win = w;
   }
   win.setTitle(`${conn.displayName} — ${t(label)}`);
-  void win.loadURL(`http://${host}${urlPath}`);
+  void win.loadURL(`http://${conn.host}${urlPath}`);
   win.show();
   win.focus();
 }
 
 // ------------------------------------------------------------------ Einstellungen
 
-function applySettings(patch: Partial<AppSettings>): AppSettings {
-  const clean: Partial<AppSettings> = {};
-  if (typeof patch.closeToTray === 'boolean') clean.closeToTray = patch.closeToTray;
-  if (typeof patch.startWithWindows === 'boolean') clean.startWithWindows = patch.startWithWindows;
-  if (typeof patch.liveView === 'boolean') clean.liveView = patch.liveView;
-  if (typeof patch.autoUpdate === 'boolean') clean.autoUpdate = patch.autoUpdate;
-  if (patch.theme === 'system' || patch.theme === 'dark' || patch.theme === 'light') clean.theme = patch.theme;
-  if (patch.language === 'system' || patch.language === 'de' || patch.language === 'en') clean.language = patch.language;
-  if (typeof patch.selectedId === 'string') clean.selectedId = patch.selectedId;
+function applySettings(patch: unknown): AppSettings {
+  const clean = cleanSettings(patch);
   const next = store.setSettings(clean);
   if (clean.theme) nativeTheme.themeSource = next.theme;
   if (clean.startWithWindows !== undefined && app.isPackaged) {
@@ -386,7 +433,7 @@ function registerIpc(): void {
     if (isPatch(patch)) manager.sendAll(patch);
   });
   ipcMain.handle('command', (_e, id: unknown, patch: unknown) =>
-    isId(id) && isPatch(patch) ? manager.send(id, patch) : { ok: false, error: t('Ungültiger Befehl') },
+    isId(id) && isPatch(patch) ? manager.send(id, patch, undefined, true) : { ok: false, error: t('Ungültiger Befehl') },
   );
   ipcMain.handle('refresh', async (_e, id: unknown) => {
     if (isId(id)) await manager.get(id)?.loadStatic();
@@ -395,11 +442,12 @@ function registerIpc(): void {
   ipcMain.handle('remove', (_e, id: unknown) => {
     if (isId(id)) manager.remove(id);
   });
-  ipcMain.handle('update', (_e, id: unknown, changes: unknown) =>
-    isId(id) && isPatch(changes)
-      ? manager.update(id, changes as { alias?: string; host?: string })
-      : { ok: false, error: t('Ungültig') },
-  );
+  ipcMain.handle('update', (_e, id: unknown, changes: unknown) => {
+    if (!isId(id) || !isPatch(changes)) return { ok: false, error: t('Ungültig') };
+    const { alias, host } = changes;
+    if (![alias, host].every((v) => v === undefined || typeof v === 'string')) return { ok: false, error: t('Ungültig') };
+    return manager.update(id, { alias: alias as string | undefined, host: host as string | undefined });
+  });
   ipcMain.handle('reorder', (_e, ids: unknown) => {
     if (Array.isArray(ids)) manager.reorder(ids.filter(isId));
   });
@@ -419,10 +467,10 @@ function registerIpc(): void {
     updateLive();
   });
   ipcMain.on('page', (_e, id: unknown, page: unknown) => {
-    if (isId(id) && typeof page === 'string' && page in PAGE_PATHS) openDevicePage(id, page as DevicePage);
+    if (isId(id) && typeof page === 'string' && Object.hasOwn(PAGE_PATHS, page)) openDevicePage(id, page as DevicePage);
   });
   ipcMain.handle('settings-get', () => store.getSettings());
-  ipcMain.handle('settings-set', (_e, patch: unknown) => applySettings(isPatch(patch) ? patch : {}));
+  ipcMain.handle('settings-set', (_e, patch: unknown) => applySettings(patch));
   ipcMain.on('show-main', (_e, id: unknown) => showMain(isId(id) ? id : undefined));
   ipcMain.on('flyout-resize', (_e, h: unknown) => {
     if (!flyoutWin || typeof h !== 'number' || !Number.isFinite(h)) return;
@@ -485,6 +533,7 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
+    restrictPermissions();
     store = new Store();
     applyLanguage();
     nativeTheme.themeSource = store.getSettings().theme;
@@ -526,5 +575,9 @@ if (!app.requestSingleInstanceLock()) {
     if (store.firstRun && manager.size === 0) {
       mainWin.webContents.once('did-finish-load', () => void firstRunDiscovery());
     }
+  }).catch((err: unknown) => {
+    // Ohne Fenster und Tray liefe die App unsichtbar weiter und blockierte jeden neuen Start.
+    dialog.showErrorBox('WLED Client', t('Start fehlgeschlagen: {reason}', { reason: err instanceof Error ? err.message : String(err) }));
+    app.exit(1);
   });
 }

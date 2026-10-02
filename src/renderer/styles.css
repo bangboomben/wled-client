@@ -641,6 +641,13 @@ input:disabled {
   width: 320px;
 }
 
+.error-boundary {
+  padding: 32px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
 /* Suche ohne bekannte Gesamtzahl: ein durchlaufender Balken */
 .progress.indeterminate span {
   width: 30%;
@@ -1208,11 +1215,6 @@ input:disabled {
   cursor: crosshair;
   touch-action: none;
   box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.2);
-}
-
-.wheel.disabled {
-  opacity: 0.5;
-  pointer-events: none;
 }
 
 .wheel canvas {

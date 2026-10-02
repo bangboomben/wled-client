@@ -192,7 +192,7 @@ function AddSegment({ device, state, count, onDone }: { device: DeviceSnapshot; 
   const [error, setError] = useState('');
 
   if (id >= maxseg) {
-    return <p className="muted small">Das Gerät erlaubt höchstens {maxseg} Segmente.</p>;
+    return <p className="muted small">{t('Das Gerät erlaubt höchstens {n} Segmente.', { n: maxseg })}</p>;
   }
   const create = () => {
     const a = Math.round(Number(start));

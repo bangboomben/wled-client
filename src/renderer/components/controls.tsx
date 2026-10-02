@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Component, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { t } from '../../shared/i18n';
 import { wled } from '../lib/store';
@@ -250,6 +250,40 @@ export function SearchInput({
 // ------------------------------------------------------------------ Hinweise
 
 const toastListeners = new Set<(msg: string) => void>();
+
+/**
+ * Fängt Fehler beim Zeichnen eines Bereichs ab, statt das ganze Fenster zu leeren — etwa bei
+ * unerwarteten Daten vom Gerät. Ändert sich `resetKey` (anderes Gerät, anderer Reiter), wird
+ * der Bereich neu versucht.
+ */
+export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: unknown }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidUpdate(prev: { resetKey?: unknown }) {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) this.setState({ error: null });
+  }
+
+  componentDidCatch(error: Error) {
+    console.error(error);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="error-boundary">
+        <p>{t('Dieser Bereich konnte nicht angezeigt werden.')}</p>
+        <p className="muted small">{this.state.error.message}</p>
+        <button className="btn" onClick={() => this.setState({ error: null })}>
+          {t('Erneut versuchen')}
+        </button>
+      </div>
+    );
+  }
+}
 
 export function toast(msg: string): void {
   for (const l of toastListeners) l(msg);

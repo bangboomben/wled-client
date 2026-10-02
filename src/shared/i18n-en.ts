@@ -348,4 +348,13 @@ export const EN: Record<string, string> = {
   'Verbindung beendet': 'Connection closed',
   'Gerätedaten nicht geladen: {reason}': 'Device data not loaded: {reason}',
   '{name}: Befehl kam nicht an ({reason})': '{name}: command did not arrive ({reason})',
+  'Antwort zu groß': 'Response too large',
+  'unerwartete Antwort': 'unexpected response',
+  '{name}: keine Bestätigung vom Gerät': '{name}: no confirmation from the device',
+  '{host} antwortet nicht ({reason}).': '{host} is not responding ({reason}).',
+  'Start fehlgeschlagen: {reason}': 'Startup failed: {reason}',
+  'Farbkreis': 'Color wheel',
+  'Dieser Bereich konnte nicht angezeigt werden.': 'This section could not be displayed.',
+  'Erneut versuchen': 'Try again',
+  'Das Gerät erlaubt höchstens {n} Segmente.': 'The device allows at most {n} segments.',
 };
