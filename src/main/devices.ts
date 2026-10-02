@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { t } from '../shared/i18n';
+import { lookPatch, type CopyResult, type Look } from '../shared/look';
 import type { CommandResult, DeviceConfig, DeviceSnapshot } from '../shared/types';
 import { DeviceConnection, normalizeHost, probeInfo } from './device';
 import type { Store } from './store';
@@ -141,12 +142,12 @@ export class DeviceManager extends EventEmitter {
     this.listChanged();
   }
 
-  /** `confirm`: Aktion, die erst mit der Antwort des Geräts als erledigt gilt (siehe DeviceConnection.enqueue). */
-  send(id: string, patch: Record<string, unknown>, key?: string, confirm = false): Promise<CommandResult> {
+  /** `confirm`: Aktion, die erst mit der Antwort des Geräts als erledigt gilt; `quiet`: kein Toast bei Fehlschlag (siehe DeviceConnection.enqueue). */
+  send(id: string, patch: Record<string, unknown>, key?: string, confirm = false, quiet = false): Promise<CommandResult> {
     const conn = this.conns.get(id);
     if (!conn) return Promise.resolve({ ok: false, error: t('Gerät nicht gefunden') });
     conn.applyLocal(patch);
-    const result = conn.enqueue(patch, key, confirm);
+    const result = conn.enqueue(patch, key, confirm, quiet);
     if (PRESET_KEYS.some((k) => k in patch)) void result.then(() => conn.reloadPresetsSoon());
     return result;
   }
@@ -155,6 +156,26 @@ export class DeviceManager extends EventEmitter {
     for (const conn of this.all()) {
       if (conn.status === 'online') void this.send(conn.id, patch);
     }
+  }
+
+  /** Look auf Geräte übertragen: je Gerät ein Befehl mit Bestätigung, Ergebnis je Gerät. */
+  copyLook(look: Look, ids: string[]): Promise<CopyResult[]> {
+    return Promise.all(
+      ids.map(async (id): Promise<CopyResult> => {
+        const conn = this.conns.get(id);
+        if (!conn) return { id, ok: false, reason: t('Gerät nicht gefunden') };
+        if (conn.status !== 'online' || !conn.state) return { id, ok: false, reason: t('Offline') };
+        const r = lookPatch(look, conn.state, conn.staticData);
+        if ('reason' in r) return { id, ok: false, reason: r.reason };
+        // Leise senden: Die Zusammenfassung der Oberfläche nennt das Gerät schon, ein eigener Toast käme doppelt.
+        const sent = await this.send(id, r.patch, undefined, true, true);
+        if (sent.ok) return { id, ok: true };
+        // Die Fehlermeldung beginnt mit dem Gerätenamen; er steht in der Zusammenfassung bereits davor.
+        const prefix = `${conn.displayName}: `;
+        const error = sent.error?.startsWith(prefix) ? sent.error.slice(prefix.length) : sent.error;
+        return { id, ok: false, reason: error || t('Übertragen fehlgeschlagen') };
+      }),
+    );
   }
 
   setLive(id: string | null): void {

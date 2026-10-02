@@ -4,6 +4,7 @@ import type { DevicePage, DeviceSnapshot, WledState } from '../../shared/types';
 import { readLocal, send, useSettings, useStatic, wled, writeLocal } from '../lib/store';
 import { displayColor, pct } from '../lib/wled';
 import { ErrorBoundary, Popover, Slider, Toggle } from './controls';
+import { CopyLookPopover } from './CopyLook';
 import { InfoDialog } from './dialogs';
 import { Icon } from './Icon';
 import { ColorsTab } from './tabs/ColorsTab';
@@ -280,6 +281,7 @@ export function DeviceView({ device, onEdit }: { device: DeviceSnapshot; onEdit:
               <Icon name="eye" size={16} />
               Live
             </button>
+            <CopyLookPopover device={device} state={state} st={st} />
             <button className="chip-btn" onClick={() => setShowInfo(true)} title={t('Geräteinformationen')}>
               <Icon name="info" size={16} />
               Info

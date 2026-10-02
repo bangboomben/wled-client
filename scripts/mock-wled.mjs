@@ -1,10 +1,12 @@
 // Simuliertes WLED-Gerät für Entwicklung und Tests — schaltet keine echten Lampen.
 //
-//   node scripts/mock-wled.mjs [--mdns 15353] 8181:desk:"Mock Desk" 8182:bedroom:"Mock Bedroom"
+//   node scripts/mock-wled.mjs [--mdns 15353] [--ws-max 528] 8181:desk:"Mock Desk" 8182:bedroom:"Mock Bedroom"
 //
 // Je Argument ein Gerät: Port, Fixture-Ordner (mock/fixtures/<name>), Anzeigename.
 // --mdns <port>: beantwortet mDNS-Anfragen nach _wled._tcp.local per Unicast auf 127.0.0.1:<port>
 // (die App fragt dort statt im Netzwerk, wenn WLED_CLIENT_MDNS_TARGET=127.0.0.1:<port> gesetzt ist).
+// --ws-max <Byte>: wie die Firmware verarbeitet das Gerät eine WebSocket-Nachricht nur, wenn sie in einem
+// TCP-Paket ankommt (ca. 1428 Byte ESP32, 528 ESP8266): Größere beantwortet es mit {"error":9}, ohne sie auszuführen.
 // Die Fixtures sind echte API-Antworten (WLED 16.0.1) ohne MAC, IP und WLAN-Daten.
 // Zusatzendpunkte für Tests: GET /__log (empfangene Befehle), POST /__reset,
 // POST /__presets (presets.json unverändert ersetzen, auch mit kaputten Einträgen).
@@ -198,6 +200,10 @@ function createDevice(port, fixture, name) {
     clients.add(ws);
     ws.send(JSON.stringify(full()));
     ws.on('message', (data) => {
+      if (wsMax && data.length > wsMax) {
+        ws.send('{"error":9}');
+        return;
+      }
       let cmd;
       try {
         cmd = JSON.parse(data.toString());
@@ -304,6 +310,9 @@ function startMdns(port, devices) {
 const args = process.argv.slice(2);
 const mdnsAt = args.indexOf('--mdns');
 const mdnsPort = mdnsAt >= 0 ? Number(args.splice(mdnsAt, 2)[1]) : 0;
+// Größte WebSocket-Nachricht, die ein Gerät noch ausführt (0 = unbegrenzt)
+const wsMaxAt = args.indexOf('--ws-max');
+const wsMax = wsMaxAt >= 0 ? Number(args.splice(wsMaxAt, 2)[1]) : 0;
 const specs = args.length ? args : ['8181:desk:Mock Desk', '8182:bedroom:Mock Bedroom'];
 const devices = specs.map((spec) => {
   const [port, fixture, ...nameParts] = spec.split(':');

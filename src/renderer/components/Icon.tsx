@@ -35,6 +35,7 @@ const PATHS: Record<string, string> = {
   shuffle: 'M3 6h4l10 12h4 M17 15l3 3-3 3 M3 18h4l3-3.6 M14 9.6L17 6h4 M17 3l3 3-3 3',
   reboot: 'M12 3v4 M6.4 6.6a8 8 0 1 0 11.2 0',
   upload: 'M12 16V4 M7 9l5-5 5 5 M4 20h16',
+  copy: 'M9 9h11v11H9z M5 15H4V4h11v1',
 };
 
 export function Icon({ name, size = 18, style, className }: { name: string; size?: number; style?: CSSProperties; className?: string }) {

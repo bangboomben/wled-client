@@ -16,6 +16,7 @@ import {
 import path from 'node:path';
 import { key, resolveLanguage, setLanguage, t } from '../shared/i18n';
 import { groupMembers, groupView, powerTargets } from '../shared/groups';
+import { cleanLook } from '../shared/look';
 import type { AppSettings, DeviceGroup, DevicePage, DeviceSnapshot, ScanResult, UpdateState } from '../shared/types';
 import { DeviceManager } from './devices';
 import { Scanner, localSubnets } from './discovery';
@@ -486,6 +487,11 @@ function registerIpc(): void {
   );
   ipcMain.handle('group-remove', (_e, id: unknown) => {
     if (isId(id)) groups.remove(id);
+  });
+  ipcMain.handle('copy-look', (_e, look: unknown, ids: unknown) => {
+    const clean = cleanLook(look);
+    if (!clean || !Array.isArray(ids)) return [];
+    return manager.copyLook(clean, [...new Set(ids.filter(isId))]);
   });
   ipcMain.handle('subnets', () => localSubnets());
   ipcMain.handle('discover', async () => {

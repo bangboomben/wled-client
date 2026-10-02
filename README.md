@@ -28,6 +28,8 @@ power and brightness of all lights from the Windows tray without opening anythin
 - **Tray quick-access** — click the tray icon: on/off and brightness for every light, plus *all off*
 - **Groups** — put lights into groups and switch or dim them together from the sidebar, the tray quick-access and
   the tray menu; brightness scales proportionally, so dimmer lights stay dimmer
+- **Copy a look** — send the effect, palette, colors and effect sliders of one light to other lights or whole groups
+  in a few clicks; brightness and on/off stay as they are, effects and palettes are matched by name
 - **Everything the web UI does**
   - **Colors** — color wheel, three color slots, hex/RGB, white channel (RGBW), color temperature (CCT), quick colors
   - **Effects** — all effects with search and filters (palette, 1D, 2D, audio); sliders and options are labeled
@@ -177,7 +179,8 @@ WLED Client ist eine Windows-App für alle WLED-Controller im Netz: Geräte per 
 Helligkeit und Ein/Aus direkt in der Seitenleiste und im Tray-Schnellzugriff, dazu alles, was die
 WLED-Weboberfläche kann (Farben, Effekte, Paletten, Segmente, Presets, Playlists, Nachtlicht, Sync,
 Live-Vorschau). Mehrere Lampen lassen sich zu Gruppen zusammenfassen und gemeinsam schalten
-und dimmen. Installer unter [Releases](https://github.com/bangboomben/wled-client/releases/latest),
+und dimmen. Den Look einer Lampe (Effekt, Palette, Farben) überträgt „Übertragen“ auf andere Lampen oder Gruppen.
+Installer unter [Releases](https://github.com/bangboomben/wled-client/releases/latest),
 Installation ohne Administratorrechte. Die Oberfläche spricht Deutsch und Englisch, je nach Windows-Sprache.
 
 ## Feedback

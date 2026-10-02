@@ -282,6 +282,7 @@ export const EN: Record<string, string> = {
   'Unter {host} antwortet kein WLED-Gerät.': 'No WLED device responds at {host}.',
   'Gerät nicht gefunden': 'Device not found',
   'Adresse fehlt': 'Address missing',
+  'Übertragen fehlgeschlagen': 'Copying failed',
 
   // Info
   'Gerätename': 'Device name',
@@ -353,6 +354,7 @@ export const EN: Record<string, string> = {
   'Antwort zu groß': 'Response too large',
   'unerwartete Antwort': 'unexpected response',
   '{name}: keine Bestätigung vom Gerät': '{name}: no confirmation from the device',
+  '{name}: Gerät meldet Fehler {code}': '{name}: device reported error {code}',
   '{host} antwortet nicht ({reason}).': '{host} is not responding ({reason}).',
   'Start fehlgeschlagen: {reason}': 'Startup failed: {reason}',
   'Farbkreis': 'Color wheel',
@@ -373,4 +375,20 @@ export const EN: Record<string, string> = {
   'Gruppe bearbeiten': 'Edit group',
   'Geräte in dieser Gruppe': 'Devices in this group',
   'Gruppe „{name}“ löschen? Die Lampen bleiben, wie sie sind.': 'Delete group “{name}”? The lights stay as they are.',
+
+  // Look übertragen
+  'Effektliste noch nicht geladen': 'Effect list not loaded yet',
+  'Eigene Paletten lassen sich nicht übertragen': "Custom palettes can't be copied",
+  'Effekt „{name}“ gibt es dort nicht': 'No effect “{name}” there',
+  'Palette „{name}“ gibt es dort nicht': 'No palette “{name}” there',
+  'Look nicht übertragen': 'Look not copied',
+  'Look auf 1 Gerät übertragen': 'Look copied to 1 device',
+  'Look auf {n} Geräte übertragen': 'Look copied to {n} devices',
+  '{name}: {reason}': '{name}: {reason}',
+  'Übertragen': 'Copy look',
+  'Übertrage …': 'Copying …',
+  'Look auf andere Geräte übertragen': 'Copy this look to other devices',
+  'Look von „{name}“ übertragen': 'Copy the look of “{name}”',
+  'Effekt, Palette, Farben und Effekt-Regler. Helligkeit und An/Aus bleiben, wie sie sind.':
+    'Effect, palette, colors and effect sliders. Brightness and on/off stay as they are.',
 };
