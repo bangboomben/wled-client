@@ -45,6 +45,7 @@ export function cleanSettings(raw: unknown): Partial<AppSettings> {
   if (raw.theme === 'system' || raw.theme === 'dark' || raw.theme === 'light') out.theme = raw.theme;
   if (raw.language === 'system' || raw.language === 'de' || raw.language === 'en') out.language = raw.language;
   if (typeof raw.selectedId === 'string') out.selectedId = raw.selectedId;
+  if (typeof raw.selectedGroupId === 'string') out.selectedGroupId = raw.selectedGroupId;
   return out;
 }
 

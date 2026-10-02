@@ -1,7 +1,7 @@
 // Gemeinsame Typen für Hauptprozess, Preload und Oberfläche.
 // Die WLED-Felder folgen der JSON-API (https://kno.wled.ge/interfaces/json-api/).
 
-import type { CopyResult, Look } from './look';
+import type { CopyResult, GroupAction, Look } from './look';
 
 export type Color = number[]; // [r, g, b] oder [r, g, b, w]
 
@@ -181,6 +181,8 @@ export interface AppSettings {
   language: LanguageSetting;
   autoUpdate: boolean;
   selectedId?: string;
+  /** Gewählte Gruppe; leer oder fehlend = ein Gerät ist gewählt (selectedId). */
+  selectedGroupId?: string;
   trayHintShown?: boolean;
 }
 
@@ -262,6 +264,8 @@ export interface WledBridge {
   removeGroup(id: string): Promise<void>;
   /** Look auf Geräte übertragen; Ergebnis je Gerät. */
   copyLook(look: Look, ids: string[]): Promise<CopyResult[]>;
+  /** Schnellfarbe, Effekt oder Palette „für alle“; Ergebnis je Gerät. */
+  applyAll(action: GroupAction, ids: string[]): Promise<CopyResult[]>;
   localSubnets(): Promise<string[]>;
   /** Sucht Geräte, die sich im Netzwerk melden (mDNS, WLED-Knotenliste). */
   discover(): Promise<void>;
