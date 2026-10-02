@@ -18,7 +18,8 @@ import { key, resolveLanguage, setLanguage, t } from '../shared/i18n';
 import type { AppSettings, DevicePage, DeviceSnapshot, ScanResult, UpdateState } from '../shared/types';
 import { DeviceManager } from './devices';
 import { Scanner, localSubnets } from './discovery';
-import { Store, cleanSettings } from './store';
+import { Store } from './store';
+import { cleanSettings } from './store-data';
 import { Updater } from './updater';
 
 // Ein unerwarteter Fehler im Hauptprozess wird protokolliert, statt Electrons modales Fehlerfenster
