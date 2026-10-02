@@ -64,6 +64,8 @@ writeFileSync(
   JSON.stringify(DEVICES.map((d, i) => ({ id: `shot-${i}`, host: `127.0.0.1:${d.port}` }))),
 );
 writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'en' }));
+// Beispielgruppe: TV Wall + Bedroom (Fantasie-Geräte, siehe DEVICES)
+writeFileSync(path.join(userData, 'groups.json'), JSON.stringify([{ id: 'shot-group', name: 'Ambient', members: ['shot-1', 'shot-2'] }]));
 
 const launchedAt = Date.now();
 const app = await electron.launch({
