@@ -23,6 +23,7 @@ const bridge: WledBridge = {
   updateDevice: (id, changes) => ipcRenderer.invoke('update', id, changes),
   reorderDevices: (ids) => ipcRenderer.invoke('reorder', ids),
   localSubnets: () => ipcRenderer.invoke('subnets'),
+  discover: () => ipcRenderer.invoke('discover'),
   scan: (targets) => ipcRenderer.invoke('scan', targets),
   cancelScan: () => ipcRenderer.send('scan-cancel'),
   onScan: (cb) => on('scan', cb),

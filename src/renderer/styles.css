@@ -641,6 +641,53 @@ input:disabled {
   width: 320px;
 }
 
+/* Suche ohne bekannte Gesamtzahl: ein durchlaufender Balken */
+.progress.indeterminate span {
+  width: 30%;
+  animation: progress-sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress.indeterminate span {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+.scan-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sweep {
+  margin-top: 14px;
+}
+
+.sweep summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sweep summary:hover {
+  color: var(--text);
+}
+
+.sweep[open] summary {
+  margin-bottom: 4px;
+}
+
 /* ------------------------------------------------------------------ Layout */
 
 .app {

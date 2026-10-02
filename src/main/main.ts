@@ -12,7 +12,7 @@ import {
 } from 'electron';
 import path from 'node:path';
 import { key, resolveLanguage, setLanguage, t } from '../shared/i18n';
-import type { AppSettings, DevicePage, DeviceSnapshot, UpdateState } from '../shared/types';
+import type { AppSettings, DevicePage, DeviceSnapshot, ScanResult, UpdateState } from '../shared/types';
 import { DeviceManager } from './devices';
 import { Scanner, localSubnets } from './discovery';
 import { Store } from './store';
@@ -404,12 +404,14 @@ function registerIpc(): void {
     if (Array.isArray(ids)) manager.reorder(ids.filter(isId));
   });
   ipcMain.handle('subnets', () => localSubnets());
+  ipcMain.handle('discover', async () => {
+    const { online, macToId } = knownDevices();
+    await adoptMoved(await scanner.discover(online, macToId));
+  });
   ipcMain.handle('scan', async (_e, targets: unknown) => {
     if (!Array.isArray(targets)) return;
-    const known = manager.all();
-    const macToId = new Map(known.filter((c) => c.config.mac).map((c) => [c.config.mac!, c.id]));
-    const knownHosts = known.filter((c) => c.status === 'online').map((c) => c.host);
-    await scanner.run(targets.map(String), knownHosts, macToId);
+    const { online, macToId } = knownDevices();
+    await adoptMoved(await scanner.sweep(targets.map(String), online, macToId));
   });
   ipcMain.on('scan-cancel', () => scanner.cancel());
   ipcMain.on('live', (_e, id: unknown) => {
@@ -430,14 +432,38 @@ function registerIpc(): void {
   ipcMain.on('quit', () => quitApp());
 }
 
-// ------------------------------------------------------------------ Start
+// ------------------------------------------------------------------ Suche
 
+/** Verbundene Geräte als fertige Suchergebnisse und die MAC-Zuordnung aller gespeicherten Geräte. */
+function knownDevices(): { online: ScanResult[]; macToId: Map<string, string> } {
+  const all = manager.all();
+  const online = all.flatMap((c) =>
+    c.status === 'online' && c.info
+      ? [{ host: c.host, name: c.info.name, mac: c.info.mac, ver: c.info.ver, leds: c.info.leds.count, knownId: c.id }]
+      : [],
+  );
+  return { online, macToId: new Map(all.filter((c) => c.config.mac).map((c) => [c.config.mac!, c.id])) };
+}
+
+/**
+ * Gespeicherte Geräte, die gerade nicht erreichbar sind und die Suche unter einer neuen Adresse
+ * findet (neue IP vom Router), ziehen dorthin um. Erreichbare Geräte bleiben, wie sie sind —
+ * wer einen Hostnamen eingetragen hat, behält ihn.
+ */
+async function adoptMoved(found: ScanResult[]): Promise<void> {
+  for (const r of found) {
+    const conn = r.knownId ? manager.get(r.knownId) : undefined;
+    if (conn && conn.status !== 'online' && conn.host !== r.host) await manager.add(r.host);
+  }
+}
+
+/** Erster Start ohne Geräte: alles übernehmen, was sich im Netzwerk meldet. */
 async function firstRunDiscovery(): Promise<void> {
-  const subnets = localSubnets();
-  if (!subnets.length) return;
-  const found = await scanner.run(subnets, [], new Map());
+  const found = await scanner.discover([], new Map());
   for (const r of found) await manager.add(r.host);
 }
+
+// ------------------------------------------------------------------ Start
 
 function quitApp(): void {
   quitting = true;

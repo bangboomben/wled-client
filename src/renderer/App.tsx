@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { t } from '../shared/i18n';
 import { DeviceView } from './components/DeviceView';
-import { AddDeviceDialog, AppSettingsDialog, DeviceEditDialog } from './components/dialogs';
+import { AddDeviceDialog, AppSettingsDialog, DeviceEditDialog, ScanProgressBar } from './components/dialogs';
 import { Toasts } from './components/controls';
 import { Icon, Logo } from './components/Icon';
 import { Sidebar } from './components/Sidebar';
@@ -21,11 +21,13 @@ function Welcome({ onAdd }: { onAdd: () => void }) {
           <>
             <h2>{t('Suche WLED-Geräte im Netzwerk …')}</h2>
             <p className="muted">
-              {t('{done} von {total} Adressen geprüft · {found} gefunden', { done: scan.done, total: scan.total, found: scan.found.length })}
+              {scan.mode === 'sweep'
+                ? t('{done} von {total} Adressen geprüft · {found} gefunden', { done: scan.done, total: scan.total, found: scan.found.length })
+                : scan.found.length === 1
+                  ? t('1 WLED-Gerät gefunden')
+                  : t('{n} WLED-Geräte gefunden', { n: scan.found.length })}
             </p>
-            <div className="progress wide">
-              <span style={{ width: `${scan.total ? (scan.done / scan.total) * 100 : 0}%` }} />
-            </div>
+            <ScanProgressBar wide />
           </>
         ) : (
           <>

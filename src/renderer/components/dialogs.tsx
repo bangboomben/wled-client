@@ -8,6 +8,17 @@ import { Icon } from './Icon';
 
 // ------------------------------------------------------------------ Gerät hinzufügen
 
+/** Fortschritt der Suche: bei der Adresssuche anteilig, sonst durchlaufend. */
+export function ScanProgressBar({ wide }: { wide?: boolean }) {
+  const scan = useScan();
+  const sweep = scan.mode === 'sweep' && scan.total > 0;
+  return (
+    <div className={`progress${wide ? ' wide' : ''}${sweep ? '' : ' indeterminate'}`} aria-label={t('Suchfortschritt')}>
+      <span style={sweep ? { width: `${(scan.done / scan.total) * 100}%` } : undefined} />
+    </div>
+  );
+}
+
 export function AddDeviceDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id: string) => void }) {
   const devices = useDevices();
   const scan = useScan();
@@ -18,6 +29,7 @@ export function AddDeviceDialog({ onClose, onAdded }: { onClose: () => void; onA
   const [adding, setAdding] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!store.scan.running) void wled.discover();
     void wled.localSubnets().then((s) => setTargets((prev) => prev || s.join(', ')));
   }, []);
 
@@ -39,6 +51,13 @@ export function AddDeviceDialog({ onClose, onAdded }: { onClose: () => void; onA
   };
 
   const fresh = scan.found.filter((r) => !isKnown(r.host, r.mac));
+  const foundText = scan.found.length === 1 ? t('1 WLED-Gerät gefunden') : t('{n} WLED-Geräte gefunden', { n: scan.found.length });
+  const scanStatus =
+    scan.mode === 'sweep' && scan.total > 0
+      ? `${scan.running ? t('{done} von {total} Adressen geprüft', { done: scan.done, total: scan.total }) : t('Fertig: {total} Adressen geprüft', { total: scan.total })} · ${foundText}`
+      : scan.running
+        ? `${t('Suche läuft …')} · ${foundText}`
+        : foundText;
 
   return (
     <Modal title={t('Gerät hinzufügen')} onClose={onClose} width={580}>
@@ -70,35 +89,21 @@ export function AddDeviceDialog({ onClose, onAdded }: { onClose: () => void; onA
 
       <section className="form-section">
         <h3>{t('Im Netzwerk suchen')}</h3>
-        <p className="muted small">
-          {t('Fragt jede Adresse der angegebenen Netze nach WLED. Andere Netze, etwa über VPN, mit Komma ergänzen (Schreibweise 192.168.2.0/24).')}
-        </p>
-        <div className="inline-form">
-          <input value={targets} spellCheck={false} onChange={(e) => setTargets(e.target.value)} aria-label={t('Netze für die Suche')} />
-          {scan.running ? (
+        <p className="muted small">{t('Findet WLED-Geräte, die sich im Netzwerk melden (mDNS und WLED-Knotenliste).')}</p>
+        <div className="scan-bar">
+          {scan.running && scan.mode === 'discover' ? (
             <button className="btn" onClick={() => wled.cancelScan()}>
               {t('Abbrechen')}
             </button>
           ) : (
-            <button className="btn" disabled={!targets.trim()} onClick={() => void wled.scan(targets.split(/[\s,;]+/).filter(Boolean))}>
+            <button className="btn discover-btn" disabled={scan.running} onClick={() => void wled.discover()}>
               <Icon name="search" size={15} />
-              {t('Suchen')}
+              {t('Erneut suchen')}
             </button>
           )}
+          <span className="muted small scan-status">{scanStatus}</span>
         </div>
-        {scan.total > 0 && (
-          <div className="progress" aria-label={t('Suchfortschritt')}>
-            <span style={{ width: `${(scan.done / scan.total) * 100}%` }} />
-          </div>
-        )}
-        {scan.total > 0 && (
-          <p className="muted small">
-            {scan.running
-              ? t('{done} von {total} Adressen geprüft', { done: scan.done, total: scan.total })
-              : t('Fertig: {total} Adressen geprüft', { total: scan.total })}{' '}
-            · {scan.found.length === 1 ? t('1 WLED-Gerät gefunden') : t('{n} WLED-Geräte gefunden', { n: scan.found.length })}
-          </p>
-        )}
+        {scan.running && <ScanProgressBar />}
         <div className="scan-results">
           {scan.found.map((r) => {
             const known = isKnown(r.host, r.mac);
@@ -133,6 +138,28 @@ export function AddDeviceDialog({ onClose, onAdded }: { onClose: () => void; onA
             {t('Alle {n} hinzufügen', { n: fresh.length })}
           </button>
         )}
+        <details className="sweep">
+          <summary>{t('Gerät nicht dabei? Adressbereich durchsuchen')}</summary>
+          <p className="muted small">
+            {t('Fragt jede Adresse der angegebenen Netze einzeln nach WLED — für Geräte, die sich nicht melden, etwa hinter einem VPN. Mehrere Netze mit Komma trennen (Schreibweise 192.168.2.0/24, höchstens /22).')}
+          </p>
+          <div className="inline-form">
+            <input value={targets} spellCheck={false} onChange={(e) => setTargets(e.target.value)} aria-label={t('Netze für die Suche')} />
+            {scan.running && scan.mode === 'sweep' ? (
+              <button className="btn" onClick={() => wled.cancelScan()}>
+                {t('Abbrechen')}
+              </button>
+            ) : (
+              <button
+                className="btn sweep-btn"
+                disabled={scan.running || !targets.trim()}
+                onClick={() => void wled.scan(targets.split(/[\s,;]+/).filter(Boolean))}
+              >
+                {t('Durchsuchen')}
+              </button>
+            )}
+          </div>
+        </details>
       </section>
     </Modal>
   );

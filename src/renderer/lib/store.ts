@@ -24,7 +24,7 @@ class AppStore {
     autoUpdate: true,
   };
   update: UpdateState = { status: 'unsupported', current: '' };
-  scan: ScanProgress = { running: false, done: 0, total: 0, found: [] };
+  scan: ScanProgress = { running: false, mode: 'discover', done: 0, total: 0, found: [] };
   version = '';
   ready = false;
   private listeners = new Set<Listener>();

@@ -185,6 +185,8 @@ export interface ScanResult {
 
 export interface ScanProgress {
   running: boolean;
+  /** discover: Geräte, die sich melden (mDNS, Knotenliste) · sweep: Adressbereich abfragen */
+  mode: 'discover' | 'sweep';
   done: number;
   total: number;
   found: ScanResult[];
@@ -244,6 +246,9 @@ export interface WledBridge {
   updateDevice(id: string, changes: { alias?: string; host?: string }): Promise<CommandResult>;
   reorderDevices(ids: string[]): Promise<void>;
   localSubnets(): Promise<string[]>;
+  /** Sucht Geräte, die sich im Netzwerk melden (mDNS, WLED-Knotenliste). */
+  discover(): Promise<void>;
+  /** Fragt jede Adresse der angegebenen Netze ab. */
   scan(targets: string[]): Promise<void>;
   cancelScan(): void;
   onScan(cb: (progress: ScanProgress) => void): () => void;
