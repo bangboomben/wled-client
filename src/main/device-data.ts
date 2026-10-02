@@ -63,9 +63,10 @@ export function cleanPresets(raw: unknown): Presets {
 /** Zustand vom Gerät, mit Segmenten, Nachtlicht und Sync in der Form, die Oberfläche und merge.ts erwarten. */
 export function cleanState(raw: unknown): WledState | undefined {
   if (!isObj(raw) || !Array.isArray(raw.seg)) return undefined;
+  // Ein unbrauchbarer Farbslot wird schwarz statt zu entfallen — sonst rückten die folgenden Farben vor.
   const seg = raw.seg.filter(isObj).map((sg) => ({
     ...sg,
-    col: Array.isArray(sg.col) ? sg.col.filter((c): c is number[] => Array.isArray(c)) : [],
+    col: Array.isArray(sg.col) ? sg.col.map((c): number[] => (Array.isArray(c) ? c : [0, 0, 0])) : [],
   }));
   const num = (v: unknown, fallback: number) => (finite(v) ? v : fallback);
   const nl = isObj(raw.nl) ? raw.nl : {};
