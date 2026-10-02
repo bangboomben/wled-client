@@ -500,6 +500,8 @@ try {
       return g.fx === fx && g.pal === pl && g.sx === 77 && g.ix === 99 && rgb(g.col) === rgb(col) && s.bri === 42 && s.on;
     }, 'Bedroom hat den Look, Helligkeit 42 und An bleiben');
     await win.waitForSelector('.toast:has-text("Look auf 1 Gerät übertragen")', { timeout: 4000 });
+    // Toasts bleiben 3,5 s und verwerfen eine gleiche neue Meldung: erst abwarten, damit der nächste Schritt seine eigene sieht.
+    await win.waitForSelector('.toast', { state: 'detached', timeout: 6000 });
   });
 
   await step('Look übertragen auf eine Gruppe mit der Quelle', async () => {

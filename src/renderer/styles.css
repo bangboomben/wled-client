@@ -272,10 +272,15 @@ p {
   white-space: nowrap;
 }
 
-.chip-btn:hover,
+.chip-btn:hover:not(:disabled),
 .chip-btn.open {
   border-color: var(--border-strong);
   color: var(--text);
+}
+
+.chip-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .chip-btn.on {
