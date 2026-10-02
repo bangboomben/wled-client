@@ -354,6 +354,7 @@ export const EN: Record<string, string> = {
   'Antwort zu groß': 'Response too large',
   'unerwartete Antwort': 'unexpected response',
   '{name}: keine Bestätigung vom Gerät': '{name}: no confirmation from the device',
+  '{name}: Gerät meldet Fehler {code}': '{name}: device reported error {code}',
   '{host} antwortet nicht ({reason}).': '{host} is not responding ({reason}).',
   'Start fehlgeschlagen: {reason}': 'Startup failed: {reason}',
   'Farbkreis': 'Color wheel',

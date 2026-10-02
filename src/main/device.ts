@@ -145,6 +145,8 @@ interface QueueItem {
   key?: string;
   /** Aktion statt Reglerwert: ohne Antwort des Geräts gilt sie als nicht bestätigt. */
   confirm: boolean;
+  /** Das Ergebnis wertet der Aufrufer selbst aus: ein Fehlschlag löst keinen eigenen Toast aus. */
+  quiet: boolean;
   resolve: (r: CommandResult) => void;
 }
 
@@ -579,9 +581,10 @@ export class DeviceConnection extends EventEmitter {
    * Stellt einen Befehl in die Warteschlange. Befehle mit gleichem `key` ersetzen sich —
    * beim Ziehen eines Reglers kommt so nur der jeweils letzte Wert beim Gerät an.
    * `confirm`: eine Aktion (Speichern, Löschen, Neustart), deren Erfolg erst die Antwort
-   * des Geräts belegt.
+   * des Geräts belegt. `quiet`: Der Aufrufer meldet einen Fehlschlag selbst, die Warteschlange
+   * zeigt dann keinen Toast.
    */
-  enqueue(patch: Record<string, unknown>, key?: string, confirm = false): Promise<CommandResult> {
+  enqueue(patch: Record<string, unknown>, key?: string, confirm = false, quiet = false): Promise<CommandResult> {
     return new Promise((resolve) => {
       if (key) {
         const existing = this.queue.find((q) => q.key === key);
@@ -589,11 +592,12 @@ export class DeviceConnection extends EventEmitter {
           existing.resolve({ ok: true });
           existing.patch = patch;
           existing.confirm ||= confirm;
+          existing.quiet &&= quiet;
           existing.resolve = resolve;
           return;
         }
       }
-      this.queue.push({ patch, key, confirm, resolve });
+      this.queue.push({ patch, key, confirm, quiet, resolve });
       void this.pump();
     });
   }
@@ -606,7 +610,7 @@ export class DeviceConnection extends EventEmitter {
         const item = this.queue.shift()!;
         const result = await this.deliver(item.patch, item.confirm);
         item.resolve(result);
-        if (!result.ok && result.error) this.emit('toast', result.error);
+        if (!result.ok && result.error && !item.quiet) this.emit('toast', result.error);
       }
     } finally {
       this.sending = false;
@@ -624,6 +628,13 @@ export class DeviceConnection extends EventEmitter {
         if (msg && msg.error === 3) {
           await delay(120);
           continue;
+        }
+        // error 9 = WLED verarbeitet eine WebSocket-Nachricht nur, wenn sie in einem TCP-Paket ankommt
+        // (ca. 1428 Byte auf dem ESP32, 528 auf dem ESP8266); größere wird verworfen. Es wurde nichts
+        // ausgeführt, also geht derselbe Befehl per HTTP: kein doppeltes Umschalten, die Antwort gleicht den Zustand ab.
+        if (msg?.error === 9) break;
+        if (msg && typeof msg.error === 'number') {
+          return { ok: false, error: t('{name}: Gerät meldet Fehler {code}', { name: this.displayName, code: msg.error }) };
         }
         // WLED beantwortet jeden Befehl. Bleibt die Antwort aus, ist das bei Reglerwerten egal
         // (der nächste folgt), eine Aktion ist dann aber nicht bestätigt. Nicht erneut per HTTP
