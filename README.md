@@ -141,7 +141,8 @@ Pull requests run the same build and tests without publishing.
 src/main/        main process: windows, tray, IPC, device connections, discovery
   device.ts      one connection per device (WebSocket + HTTP, command queue, retries)
   devices.ts     device list (add, remove, reorder, persist)
-  discovery.ts   network scan via /json/info and /json/nodes
+  discovery.ts   device search: mDNS + WLED node list; address-range scan only on request
+  mdns.ts        minimal mDNS client (queries from a free port, no listening socket)
 src/preload/     narrow bridge window.wled (contextIsolation, sandbox)
 src/renderer/    React UI — main window and tray flyout (flyout.html)
 src/shared/      types and the JSON-API patch logic (merge.ts)
@@ -151,6 +152,9 @@ src/shared/      types and the JSON-API patch logic (merge.ts)
   pushes updates to both windows via IPC.
 - Commands with the same key replace each other in the queue — dragging a slider only sends the latest value.
 - The UI applies every change immediately using the same patch semantics as the firmware (`src/shared/merge.ts`).
+- Discovery asks for `_wled._tcp` via mDNS and follows each device's node list (`/json/nodes`). It never walks
+  through addresses on its own: the address-range scan runs only when you start it, uses the adapter's real
+  netmask and stops at a /22.
 
 ### Testing without real lights
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { key, t } from '../../../shared/i18n';
 import type { Color, DeviceSnapshot, DeviceStatic, WledState } from '../../../shared/types';
-import { send } from '../../lib/store';
+import { readLocal, send, writeLocal } from '../../lib/store';
 import {
   colPatch,
   displayColor,
@@ -16,6 +16,7 @@ import {
   viewSeg,
 } from '../../lib/wled';
 import { ColorWheel } from '../ColorWheel';
+import { Icon } from '../Icon';
 import { Slider } from '../controls';
 
 const QUICK: Array<{ c: Color; label: string }> = [
@@ -48,6 +49,10 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
 
   const [hex, setHex] = useState(toHex(rgb));
   useEffect(() => setHex(toHex(rgb)), [rgb[0], rgb[1], rgb[2]]);
+
+  // Die RGB-Regler braucht kaum jemand ständig: zugeklappt, bis man sie holt, und so gemerkt
+  const [rgbOpen, setRgbOpen] = useState(() => readLocal<boolean>('wled.rgbOpen', false));
+  useEffect(() => writeLocal('wled.rgbOpen', rgbOpen), [rgbOpen]);
 
   const sendColor = (c: Color) =>
     send(device.id, segPatch(state, { col: colPatch(activeSlot, c) }), `col${activeSlot}`);
@@ -129,51 +134,63 @@ export function ColorsTab({ device, state, st }: { device: DeviceSnapshot; state
                 }}
               />
             </label>
-            <span className="muted small mono">
-              {rgb.join(', ')}
-              {rgbw ? `, W ${w}` : ''}
-            </span>
+            <button
+              className="rgb-toggle"
+              aria-expanded={rgbOpen}
+              title={rgbOpen ? t('RGB-Regler ausblenden') : t('RGB-Regler einblenden')}
+              onClick={() => setRgbOpen((o) => !o)}
+            >
+              <span className="rgb-toggle-label">RGB</span>
+              <span className="mono">
+                {rgb.join(', ')}
+                {rgbw ? `, W ${w}` : ''}
+              </span>
+              <Icon name="chevron" size={14} style={{ transform: rgbOpen ? 'rotate(180deg)' : undefined }} />
+            </button>
           </div>
         </section>
 
-        <section className="panel">
-          {[key('Rot'), key('Grün'), key('Blau')].map((label, i) => (
-            <div className="field" key={label}>
-              <span>
-                {t(label)} <span className="val">{rgb[i]}</span>
-              </span>
-              <Slider variant="gradient" track={channelTrack(i)} value={rgb[i]} label={t(label)} onChange={(nv) => setChannel(i, nv)} />
-            </div>
-          ))}
-          {rgbw && (
-            <div className="field">
-              <span>
-                {t('Weiß (W-Kanal)')} <span className="val">{w}</span>
-              </span>
-              <Slider
-                variant="gradient"
-                track="linear-gradient(90deg, #2a2620, #fff3d6)"
-                value={w}
-                label={t('Weißkanal')}
-                onChange={(nv) => sendColor([...rgb, nv])}
-              />
-            </div>
-          )}
-          {caps.cct && (
-            <div className="field">
-              <span>
-                {t('Farbtemperatur')} <span className="val">{seg.cct}</span>
-              </span>
-              <Slider
-                variant="gradient"
-                track="linear-gradient(90deg, #ff9d3c, #fff1dc, #cfe0ff)"
-                value={seg.cct}
-                label={t('Farbtemperatur')}
-                onChange={(nv) => send(device.id, segPatch(state, { cct: nv }), 'cct')}
-              />
-            </div>
-          )}
-        </section>
+        {(rgbOpen || rgbw || caps.cct) && (
+          <section className="panel">
+            {rgbOpen &&
+              [key('Rot'), key('Grün'), key('Blau')].map((label, i) => (
+                <div className="field" key={label}>
+                  <span>
+                    {t(label)} <span className="val">{rgb[i]}</span>
+                  </span>
+                  <Slider variant="gradient" track={channelTrack(i)} value={rgb[i]} label={t(label)} onChange={(nv) => setChannel(i, nv)} />
+                </div>
+              ))}
+            {rgbw && (
+              <div className="field">
+                <span>
+                  {t('Weiß (W-Kanal)')} <span className="val">{w}</span>
+                </span>
+                <Slider
+                  variant="gradient"
+                  track="linear-gradient(90deg, #2a2620, #fff3d6)"
+                  value={w}
+                  label={t('Weißkanal')}
+                  onChange={(nv) => sendColor([...rgb, nv])}
+                />
+              </div>
+            )}
+            {caps.cct && (
+              <div className="field">
+                <span>
+                  {t('Farbtemperatur')} <span className="val">{seg.cct}</span>
+                </span>
+                <Slider
+                  variant="gradient"
+                  track="linear-gradient(90deg, #ff9d3c, #fff1dc, #cfe0ff)"
+                  value={seg.cct}
+                  label={t('Farbtemperatur')}
+                  onChange={(nv) => send(device.id, segPatch(state, { cct: nv }), 'cct')}
+                />
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="panel">
           <div className="panel-head">
