@@ -1,0 +1,25 @@
+# Privacy Policy
+
+WLED Client has no telemetry, no analytics, no accounts and no server of its own. It never sends data to the
+developer.
+
+## Network connections
+
+The app connects only to:
+
+- **Your WLED devices** — the devices you add or that it finds on your network, over HTTP and WebSocket, to read
+  and change their state. Device settings pages open the device's own web pages.
+- **Addresses you scan** — the network scan sends a request to `/json/info` on each address of the networks you
+  choose, to find WLED devices.
+- **GitHub** — with *Check for updates automatically* turned on (the default), the app asks
+  [github.com](https://github.com/bangboomben/wled-client/releases) about new releases shortly after start and every
+  six hours, and downloads a new version from there. Like any web request, this reveals your IP address to GitHub
+  ([GitHub privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)).
+  You can turn this off in *App settings*.
+
+Links to other websites (for example from a device's settings pages) open in your default browser.
+
+## Data on your computer
+
+Your device list and settings are stored locally in `%APPDATA%\WLED Client\` and stay there. Uninstalling the app
+does not delete them; you can remove the folder by hand.
