@@ -400,4 +400,9 @@ export const EN: Record<string, string> = {
   'Kein Gerät der Gruppe ist erreichbar.': 'No device of this group is reachable.',
   'Eigene Palette': 'Custom palette',
   'Öffnen': 'Open',
+  'Für alle': 'For all',
+  'Helligkeit und An/Aus bleiben, wie sie sind.': 'Brightness and on/off stay as they are.',
+  'Effekt für alle …': 'Effect for all …',
+  'Palette für alle …': 'Palette for all …',
+  'Look von …': 'Look from …',
 };

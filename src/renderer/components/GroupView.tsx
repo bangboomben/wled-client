@@ -1,12 +1,15 @@
+import { useState } from 'react';
 import { groupMembers } from '../../shared/groups';
 import { t } from '../../shared/i18n';
+import { commonNames, copySummary, failureSummary, lookFrom, type GroupAction } from '../../shared/look';
 import type { DeviceGroup, DeviceSnapshot, DeviceStatic } from '../../shared/types';
-import { useStatics } from '../lib/store';
-import { pct, viewSeg } from '../lib/wled';
-import { Slider } from './controls';
+import { useStatics, wled } from '../lib/store';
+import { pct, rgbCss, viewSeg } from '../lib/wled';
+import { Slider, toast } from './controls';
 import { useGroupControls } from './Groups';
 import { Icon } from './Icon';
 import { DeviceDot, QuickControls, deviceAccent, statusText } from './Sidebar';
+import { QUICK } from './tabs/ColorsTab';
 
 /** Effekt und Palette des angezeigten Segments — oder der Name des aktiven Presets. */
 function lookText(device: DeviceSnapshot, st: DeviceStatic | null): string {
@@ -38,6 +41,98 @@ function MemberCard({ device, st, onOpen }: { device: DeviceSnapshot; st: Device
         {t('Öffnen')} →
       </button>
     </div>
+  );
+}
+
+/** „Für alle“: Schnellfarbe, Effekt, Palette oder Look eines Mitglieds auf alle erreichbaren Mitglieder. */
+function ForAll({ members, statics }: { members: DeviceSnapshot[]; statics: Array<DeviceStatic | null> }) {
+  const [busy, setBusy] = useState(false);
+  const reach = members.filter((d) => d.status === 'online' && d.state);
+  const ids = reach.map((d) => d.id);
+  const reachStatics = reach.map((d) => statics[members.indexOf(d)]);
+  // Auswahllisten erst, wenn alle Namenslisten da sind — sonst wäre die Schnittmenge falsch.
+  const ready = reach.length > 0 && reachStatics.every((s) => !!s);
+  const effects = ready ? commonNames(reachStatics.map((s) => s!.effects)) : [];
+  const palettes = ready ? commonNames(reachStatics.map((s) => s!.palettes)) : [];
+  const nameOf = (id: string) => members.find((d) => d.id === id)?.name ?? id;
+
+  const apply = async (action: GroupAction) => {
+    if (!ids.length || busy) return;
+    setBusy(true);
+    try {
+      const msg = failureSummary(await wled.applyAll(action, ids), nameOf);
+      if (msg) toast(msg);
+    } catch {
+      toast(t('Übertragen fehlgeschlagen'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyFrom = async (sourceId: string) => {
+    const src = reach.find((d) => d.id === sourceId);
+    const st = src ? statics[members.indexOf(src)] : null;
+    const look = src?.state?.seg.length ? lookFrom(viewSeg(src.state), st) : null;
+    if (!look) return toast(t('Look nicht übertragen'));
+    if (look.pal === null) return toast(t('Eigene Paletten lassen sich nicht übertragen'));
+    if (busy) return;
+    setBusy(true);
+    try {
+      toast(copySummary(await wled.copyLook(look, ids.filter((id) => id !== sourceId)), nameOf));
+    } catch {
+      toast(t('Übertragen fehlgeschlagen'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="panel for-all">
+      <div className="panel-head">
+        <h3>{t('Für alle')}</h3>
+        <span className="muted small">{t('Helligkeit und An/Aus bleiben, wie sie sind.')}</span>
+      </div>
+      <div className="quick">
+        {QUICK.map((q) => (
+          <button
+            key={q.label}
+            className="quick-btn"
+            title={t(q.label)}
+            aria-label={t(q.label)}
+            style={{ background: rgbCss(q.c) }}
+            disabled={!ids.length || busy}
+            onClick={() => void apply({ kind: 'solid', color: q.c.slice(0, 3) })}
+          />
+        ))}
+      </div>
+      <div className="for-all-row">
+        {/* Auswahllisten sind Aktionen: Nach dem Setzen zeigen sie wieder ihren Platzhalter. */}
+        <select value="" disabled={!ready || busy} aria-label={t('Effekt für alle …')} onChange={(e) => e.target.value && void apply({ kind: 'effect', name: e.target.value })}>
+          <option value="">{t('Effekt für alle …')}</option>
+          {effects.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <select value="" disabled={!ready || busy} aria-label={t('Palette für alle …')} onChange={(e) => e.target.value && void apply({ kind: 'palette', name: e.target.value })}>
+          <option value="">{t('Palette für alle …')}</option>
+          {palettes.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <select value="" disabled={reach.length < 2 || busy} aria-label={t('Look von …')} onChange={(e) => e.target.value && void copyFrom(e.target.value)}>
+          <option value="">{t('Look von …')}</option>
+          {reach.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </section>
   );
 }
 
@@ -116,6 +211,7 @@ export function GroupView({
             </button>
           </div>
           <div className="group-scroll">
+            <ForAll members={members} statics={statics} />
             <div className="member-grid">
               {members.map((d, i) => (
                 <MemberCard key={d.id} device={d} st={statics[i]} onOpen={onOpen} />
