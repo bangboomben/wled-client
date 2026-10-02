@@ -359,4 +359,8 @@ export const EN: Record<string, string> = {
   'Dieser Bereich konnte nicht angezeigt werden.': 'This section could not be displayed.',
   'Erneut versuchen': 'Try again',
   'Das Gerät erlaubt höchstens {n} Segmente.': 'The device allows at most {n} segments.',
+  'Bitte einen Namen eingeben.': 'Please enter a name.',
+  'Der Name darf höchstens {n} Zeichen haben.': 'The name can be at most {n} characters long.',
+  'Eine Gruppe „{name}“ gibt es schon.': 'A group named “{name}” already exists.',
+  'Bitte mindestens ein Gerät auswählen.': 'Please select at least one device.',
 };
