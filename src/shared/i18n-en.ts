@@ -391,4 +391,5 @@ export const EN: Record<string, string> = {
   'Look von „{name}“ übertragen': 'Copy the look of “{name}”',
   'Effekt, Palette, Farben und Effekt-Regler. Helligkeit und An/Aus bleiben, wie sie sind.':
     'Effect, palette, colors and effect sliders. Brightness and on/off stay as they are.',
+  'Nicht übernommen': 'Not applied',
 };

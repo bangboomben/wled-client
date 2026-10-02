@@ -127,3 +127,57 @@ export function copySummary(results: CopyResult[], nameOf: (id: string) => strin
   const fails = results.filter((r) => !r.ok).map((r) => t('{name}: {reason}', { name: nameOf(r.id), reason: r.reason ?? '' }));
   return [head, ...fails].join(' · ');
 }
+
+/** Aktion „für alle“ der Gruppenansicht — je Mitglied mit dessen Namenslisten umgesetzt. */
+export type GroupAction = { kind: 'solid'; color: Color } | { kind: 'effect'; name: string } | { kind: 'palette'; name: string };
+
+/** Effekt der Schnellfarben „für alle“, beim Namen gesucht wie alle anderen. */
+const SOLID = 'Solid';
+
+/** Prüft eine Aktion aus der Oberfläche; null bei allem, was nicht genau passt. */
+export function cleanAction(raw: unknown): GroupAction | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if (r.kind === 'solid') {
+    const c = r.color;
+    if (!Array.isArray(c) || c.length !== 3 || !c.every(isByte)) return null;
+    return { kind: 'solid', color: [c[0], c[1], c[2]] };
+  }
+  if ((r.kind === 'effect' || r.kind === 'palette') && isName(r.name)) return { kind: r.kind, name: r.name };
+  return null;
+}
+
+/**
+ * Befehl für ein Mitglied: Schnellfarbe (Effekt „Solid“ und Farbe 1, Weiß aus), Effekt oder Palette auf alle
+ * Segmente — oder der Grund, warum es unverändert bleibt. Nie Helligkeit oder An/Aus.
+ */
+export function actionPatch(action: GroupAction, state: WledState, st: DeviceStatic | null): { patch: Record<string, unknown> } | { reason: string } {
+  if (!st) return { reason: t('Effektliste noch nicht geladen') };
+  if (action.kind === 'palette') {
+    const pal = st.palettes.indexOf(action.name);
+    if (pal < 0) return { reason: t('Palette „{name}“ gibt es dort nicht', { name: action.name }) };
+    return { patch: { seg: state.seg.map((s) => ({ id: s.id, pal })) } };
+  }
+  const name = action.kind === 'solid' ? SOLID : action.name;
+  const fx = st.effects.indexOf(name);
+  if (fx < 0) return { reason: t('Effekt „{name}“ gibt es dort nicht', { name }) };
+  if (action.kind === 'effect') return { patch: { seg: state.seg.map((s) => ({ id: s.id, fx })) } };
+  const [r, g, b] = action.color;
+  return { patch: { seg: state.seg.map((s) => ({ id: s.id, fx, col: [[r, g, b, 0]] })) } };
+}
+
+/** Platzhalter in WLEDs Namenslisten, die niemand auswählen soll. */
+const isPlaceholder = (name: string) => !name || name === '-' || name.includes('RSVD');
+
+/** Namen, die in allen Listen vorkommen — Reihenfolge der ersten Liste, ohne Doppelte und Platzhalter. */
+export function commonNames(lists: string[][]): string[] {
+  if (!lists.length) return [];
+  const rest = lists.slice(1).map((l) => new Set(l));
+  return [...new Set(lists[0])].filter((n) => !isPlaceholder(n) && rest.every((s) => s.has(n)));
+}
+
+/** Hinweis nur für Fehlschläge: null, wenn alles geklappt hat. */
+export function failureSummary(results: CopyResult[], nameOf: (id: string) => string): string | null {
+  const fails = results.filter((r) => !r.ok).map((r) => t('{name}: {reason}', { name: nameOf(r.id), reason: r.reason ?? '' }));
+  return fails.length ? [t('Nicht übernommen'), ...fails].join(' · ') : null;
+}

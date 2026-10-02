@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanLook, copySummary, copyTargets, lookFrom, lookPatch, type Look } from './look';
+import { actionPatch, cleanAction, cleanLook, commonNames, copySummary, copyTargets, failureSummary, lookFrom, lookPatch, type Look } from './look';
 import type { DeviceGroup, DeviceSnapshot, DeviceStatic, WledSegment, WledState } from './types';
 
 const ST: DeviceStatic = {
@@ -138,5 +138,92 @@ describe('copySummary', () => {
   it('meldet, wenn nichts übertragen wurde', () => {
     expect(copySummary([{ id: 'b', ok: false, reason: 'Offline' }], nameOf)).toBe('Look nicht übertragen · Lampe b: Offline');
     expect(copySummary([], nameOf)).toBe('Look nicht übertragen');
+  });
+});
+
+describe('cleanAction', () => {
+  it('lässt gültige Aktionen durch und wirft Unbekanntes weg', () => {
+    expect(cleanAction({ kind: 'solid', color: [255, 0, 0] })).toEqual({ kind: 'solid', color: [255, 0, 0] });
+    expect(cleanAction({ kind: 'effect', name: 'Rainbow' })).toEqual({ kind: 'effect', name: 'Rainbow' });
+    expect(cleanAction({ kind: 'palette', name: 'Party', extra: 1 })).toEqual({ kind: 'palette', name: 'Party' });
+  });
+
+  it('verwirft alles Unpassende', () => {
+    const bad: unknown[] = [
+      null,
+      [],
+      'solid',
+      { kind: 'blink', name: 'x' },
+      { kind: 'solid', color: [255, 0] },
+      { kind: 'solid', color: [255, 0, 0, 0] },
+      { kind: 'solid', color: [256, 0, 0] },
+      { kind: 'solid', color: [1.5, 0, 0] },
+      { kind: 'effect', name: '' },
+      { kind: 'palette', name: 'x'.repeat(65) },
+      { kind: 'effect' },
+    ];
+    for (const raw of bad) expect(cleanAction(raw)).toBeNull();
+  });
+});
+
+/** „Solid“ steht hier nicht an erster Stelle — die Abbildung muss beim Namen gehen. */
+const SOLID_ELSEWHERE: DeviceStatic = { effects: ['Blink', 'Solid', 'Rainbow'], palettes: ['Party', 'Default'], fxdata: [], presets: {} };
+
+describe('actionPatch', () => {
+  it('setzt „Solid“ beim Namen und nur Farbe 1 mit Weiß 0 auf alle Segmente', () => {
+    expect(actionPatch({ kind: 'solid', color: [255, 0, 0] }, targetState, SOLID_ELSEWHERE)).toEqual({
+      patch: {
+        seg: [
+          { id: 0, fx: 1, col: [[255, 0, 0, 0]] },
+          { id: 3, fx: 1, col: [[255, 0, 0, 0]] },
+        ],
+      },
+    });
+  });
+
+  it('setzt Effekt bzw. Palette beim Namen, sonst nichts', () => {
+    expect(actionPatch({ kind: 'effect', name: 'Rainbow' }, targetState, SOLID_ELSEWHERE)).toEqual({
+      patch: { seg: [{ id: 0, fx: 2 }, { id: 3, fx: 2 }] },
+    });
+    expect(actionPatch({ kind: 'palette', name: 'Default' }, targetState, SOLID_ELSEWHERE)).toEqual({
+      patch: { seg: [{ id: 0, pal: 1 }, { id: 3, pal: 1 }] },
+    });
+  });
+
+  it('nennt die Gründe', () => {
+    expect(actionPatch({ kind: 'effect', name: 'Rainbow' }, targetState, null)).toEqual({ reason: 'Effektliste noch nicht geladen' });
+    expect(actionPatch({ kind: 'solid', color: [1, 2, 3] }, targetState, { ...SOLID_ELSEWHERE, effects: ['Blink'] })).toEqual({
+      reason: 'Effekt „Solid“ gibt es dort nicht',
+    });
+    expect(actionPatch({ kind: 'effect', name: 'Aurora' }, targetState, SOLID_ELSEWHERE)).toEqual({ reason: 'Effekt „Aurora“ gibt es dort nicht' });
+    expect(actionPatch({ kind: 'palette', name: 'Sunset' }, targetState, SOLID_ELSEWHERE)).toEqual({ reason: 'Palette „Sunset“ gibt es dort nicht' });
+  });
+});
+
+describe('commonNames', () => {
+  it('liefert die gemeinsamen Namen in der Reihenfolge der ersten Liste', () => {
+    expect(commonNames([['Solid', 'Blink', 'Rainbow', 'Aurora'], ['Aurora', 'Solid', 'Rainbow']])).toEqual(['Solid', 'Rainbow', 'Aurora']);
+  });
+
+  it('lässt Platzhalter, leere Namen und Doppelte weg', () => {
+    expect(commonNames([['Solid', '-', 'RSVD', 'Solid', '', 'Rainbow'], ['Rainbow', 'Solid', '-', 'RSVD', '']])).toEqual(['Solid', 'Rainbow']);
+  });
+
+  it('gibt ohne Listen nichts zurück, mit einer Liste deren Namen', () => {
+    expect(commonNames([])).toEqual([]);
+    expect(commonNames([['Solid', 'Blink']])).toEqual(['Solid', 'Blink']);
+  });
+});
+
+describe('failureSummary', () => {
+  const nameOf = (id: string) => `Lampe ${id}`;
+
+  it('meldet nichts, wenn alles geklappt hat', () => {
+    expect(failureSummary([{ id: 'a', ok: true }], nameOf)).toBeNull();
+    expect(failureSummary([], nameOf)).toBeNull();
+  });
+
+  it('nennt die gescheiterten Geräte mit Grund', () => {
+    expect(failureSummary([{ id: 'a', ok: true }, { id: 'b', ok: false, reason: 'Offline' }], nameOf)).toBe('Nicht übernommen · Lampe b: Offline');
   });
 });
