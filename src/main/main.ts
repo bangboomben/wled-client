@@ -237,13 +237,16 @@ function trayIcon(anyOn: boolean) {
   return nativeImage.createFromPath(path.join(RESOURCES, anyOn ? 'tray-on.ico' : 'tray-off.ico'));
 }
 
+/** Windows liest „&“ in Menütexten als Tastenkürzel-Markierung; „&&“ zeigt ein echtes „&“. */
+const menuLabel = (s: string) => s.replace(/&/g, '&&');
+
 function buildTrayMenu(): Menu {
   const devices = manager.list();
   const groupItems = groups.list().map((g): MenuItemConstructorOptions => {
     const members = groupMembers(g, devices);
     const view = groupView(members);
     return {
-      label: g.name,
+      label: menuLabel(g.name),
       type: 'checkbox',
       checked: view.lit,
       enabled: view.reachable > 0,
@@ -259,7 +262,7 @@ function buildTrayMenu(): Menu {
     ...(groupItems.length ? [{ type: 'separator' } as const] : []),
     ...devices.map(
       (d): MenuItemConstructorOptions => ({
-        label: d.status === 'online' ? d.name : t('{name} (offline)', { name: d.name }),
+        label: d.status === 'online' ? menuLabel(d.name) : t('{name} (offline)', { name: menuLabel(d.name) }),
         type: 'checkbox',
         checked: d.status === 'online' && !!d.state?.on,
         enabled: d.status === 'online',

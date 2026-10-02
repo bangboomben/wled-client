@@ -1,5 +1,5 @@
-// Prüft gespeicherte Geräte und Einstellungen (devices.json, settings.json und Änderungen aus der
-// Oberfläche). Ohne Electron, damit es sich ohne App testen lässt.
+// Prüft gespeicherte Geräte, Gruppen und Einstellungen (devices.json, groups.json, settings.json und
+// Änderungen aus der Oberfläche). Ohne Electron, damit es sich ohne App testen lässt.
 
 import { t } from '../shared/i18n';
 import { GROUP_NAME_MAX } from '../shared/groups';

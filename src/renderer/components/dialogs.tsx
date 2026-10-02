@@ -237,6 +237,7 @@ export function GroupDialog({ group, devices, onClose }: { group?: DeviceGroup; 
   };
 
   const save = async () => {
+    if (busy) return;
     setBusy(true);
     const input = { name, members };
     const r = group ? await wled.updateGroup(group.id, input) : await wled.createGroup(input);

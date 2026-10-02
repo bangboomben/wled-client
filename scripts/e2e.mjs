@@ -236,6 +236,8 @@ try {
       const c = (await state(PORTS.desk)).seg[0].col[0];
       return c[0] === 51 && c[1] === 102 && c[2] === 255 && c.length === 4;
     }, 'Farbe 3366ff');
+    // Das Hex-Feld behielte sonst den Fokus; der Klick auf den RGB-Knopf würde es beim Verlassen erneut senden.
+    await win.keyboard.press('Tab');
   });
 
   await step('RGB-Regler auf Abruf, Zustand bleibt gemerkt', async () => {
@@ -246,10 +248,17 @@ try {
     expect((await toggle.getAttribute('aria-expanded')) === 'false', 'Knopf meldet nicht „zugeklappt“');
     await toggle.click();
     await red.fill('10');
-    await waitFor(async () => {
-      const c = (await state(PORTS.desk)).seg[0].col[0];
-      return c[0] === 10 && c[1] === 102 && c[2] === 255 && c.length === 4;
-    }, 'Rot = 10, Grün/Blau/W unverändert');
+    try {
+      await waitFor(async () => {
+        const c = (await state(PORTS.desk)).seg[0].col[0];
+        return c[0] === 10 && c[1] === 102 && c[2] === 255 && c.length === 4;
+      }, 'Rot = 10, Grün/Blau/W unverändert');
+    } catch (err) {
+      // Bei einer Zeitüberschreitung festhalten, was das Gerät tatsächlich sah.
+      const seen = JSON.stringify((await state(PORTS.desk)).seg[0].col[0]);
+      const lastCmds = JSON.stringify((await logOf(PORTS.desk)).slice(-5));
+      throw new Error(`${err.message} (seg[0].col[0] = ${seen}; letzte 5 Befehle: ${lastCmds})`);
+    }
     // Tab-Wechsel und Neuladen der Oberfläche: Die Regler bleiben offen
     await win.click('.tab:has-text("Effekte")');
     await win.click('.tab:has-text("Farben")');

@@ -26,8 +26,11 @@
   --track: #2b303b;
   --thumb: #ffffff;
 
-  --accent: #f5a524;
-  --accent-contrast: #111318;
+  /* Grundfarbe der App; --accent selbst folgt per Skript dem gewählten Gerät (App.tsx). */
+  --app-accent: #f5a524;
+  --app-accent-contrast: #111318;
+  --accent: var(--app-accent);
+  --accent-contrast: var(--app-accent-contrast);
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   --accent-line: color-mix(in srgb, var(--accent) 55%, transparent);
 }
@@ -853,8 +856,8 @@ input:disabled {
 
 /* Gruppen in der Grundfarbe der App: --accent am Wurzelelement folgt dem gewählten Gerät. */
 .group-row {
-  --accent: #f5a524;
-  --accent-contrast: #111318;
+  --accent: var(--app-accent);
+  --accent-contrast: var(--app-accent-contrast);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;

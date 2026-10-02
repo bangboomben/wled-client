@@ -11,7 +11,7 @@ const GESTURE_IDLE_MS = 800;
 
 function memberText(members: DeviceSnapshot[]): string {
   if (!members.length) return t('Keine Geräte');
-  return members.map((d) => (d.status === 'online' ? d.name : t('{name} (offline)', { name: d.name }))).join(', ');
+  return members.map((d) => (d.status === 'offline' ? t('{name} (offline)', { name: d.name }) : d.name)).join(', ');
 }
 
 /** Eine Gruppe: Ein/Aus und anteilige Helligkeit für alle Mitglieder — in Seitenleiste und Tray-Fenster. */
@@ -19,6 +19,7 @@ export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devic
   const members = groupMembers(group, devices);
   const view = groupView(members);
   const usable = view.reachable > 0;
+  const memberLine = memberText(members);
   // Stand bei Zugbeginn: Zieht man im selben Zug wieder hoch, kommen die Verhältnisse zurück.
   const base = useRef<BriTarget[] | null>(null);
   const idle = useRef<number | undefined>(undefined);
@@ -59,13 +60,18 @@ export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devic
       <Icon name="layers" size={16} className="group-icon" />
       <div className="device-meta">
         <div className="device-name">{group.name}</div>
-        <div className="device-sub">{memberText(members)}</div>
+        <div className="device-sub" title={memberLine}>
+          {memberLine}
+        </div>
       </div>
       <Toggle checked={view.lit} disabled={!usable} label={t('Gruppe {name} ein- oder ausschalten', { name: group.name })} onChange={setPower} />
       {/* Capture-Phase: Der Regler hält pointerdown selbst an. */}
       <div
         className="row-slider"
-        onPointerDownCapture={() => {
+        onPointerDownCapture={(e) => {
+          // Nur ein Druck auf den Regler selbst startet einen Mauszug (sonst käme nie ein onCommit).
+          if (!(e.target instanceof HTMLInputElement)) return;
+          window.clearTimeout(idle.current);
           dragging.current = true;
         }}
       >
