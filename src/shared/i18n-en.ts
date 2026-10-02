@@ -384,4 +384,9 @@ export const EN: Record<string, string> = {
   'Look auf 1 Gerät übertragen': 'Look copied to 1 device',
   'Look auf {n} Geräte übertragen': 'Look copied to {n} devices',
   '{name}: {reason}': '{name}: {reason}',
+  'Übertragen': 'Copy look',
+  'Look auf andere Geräte übertragen': 'Copy this look to other devices',
+  'Look von „{name}“ übertragen': 'Copy the look of “{name}”',
+  'Effekt, Palette, Farben und Effekt-Regler. Helligkeit und An/Aus bleiben, wie sie sind.':
+    'Effect, palette, colors and effect sliders. Brightness and on/off stay as they are.',
 };

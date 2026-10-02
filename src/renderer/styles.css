@@ -1758,6 +1758,38 @@ input:disabled {
   margin: 0;
 }
 
+.copy-look {
+  min-width: 280px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.copy-groups,
+.copy-devices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pop-label {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.pop-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.check.disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .menu {
   display: flex;
   flex-direction: column;

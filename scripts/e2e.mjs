@@ -468,6 +468,64 @@ try {
     await waitFor(() => saved().length === 1 && saved()[0].name === 'E2E Gruppe', 'groups.json nach dem Löschen');
   });
 
+  /** Wartet, bis der Hauptprozess den Segmentzustand des Mocks kennt; danach kurz auf die Oberfläche. */
+  const mainSeg = async (id, pred, msg) => {
+    await waitFor(async () => {
+      const snap = await win.evaluate(() => window.wled.getSnapshot());
+      const seg = snap.devices.find((d) => d.id === id)?.state?.seg?.[0];
+      return !!seg && pred(seg);
+    }, msg, 6000);
+    await win.waitForTimeout(300);
+  };
+  const rgb = (col) => col.map((c) => c.slice(0, 3).join(',')).join(' | ');
+
+  await step('Look übertragen auf ein Gerät', async () => {
+    const eff = await api(PORTS.desk, '/json/eff');
+    const pal = await api(PORTS.desk, '/json/pal');
+    const fx = eff.indexOf('Rainbow');
+    const pl = pal.indexOf('Party');
+    const col = [[10, 20, 30, 40], [50, 60, 70, 0], [80, 90, 100, 0]];
+    await api(PORTS.desk, '/json/state', { seg: [{ id: 0, fx, pal: pl, sx: 77, ix: 99, col }] });
+    await api(PORTS.bedroom, '/json/state', { on: true, bri: 42, seg: [{ id: 0, fx: 0, pal: 0, sx: 128, ix: 128 }] });
+    await win.keyboard.press('Control+1');
+    await win.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    await mainSeg('dev-desk', (s) => s.fx === fx && s.pal === pl && s.sx === 77, 'Desk-Look im Hauptprozess');
+    await win.click('.chip-btn:has-text("Übertragen")');
+    // Gezielt die Geräteliste: Die Mitgliederzeile der Gruppe enthält ebenfalls „Mock Bedroom“.
+    await win.click('.popover .copy-devices .check:has-text("Mock Bedroom")');
+    await win.click('.popover .btn.primary');
+    await waitFor(async () => {
+      const s = await state(PORTS.bedroom);
+      const g = s.seg[0];
+      return g.fx === fx && g.pal === pl && g.sx === 77 && g.ix === 99 && rgb(g.col) === rgb(col) && s.bri === 42 && s.on;
+    }, 'Bedroom hat den Look, Helligkeit 42 und An bleiben');
+    await win.waitForSelector('.toast:has-text("Look auf 1 Gerät übertragen")', { timeout: 4000 });
+  });
+
+  await step('Look übertragen auf eine Gruppe mit der Quelle', async () => {
+    const eff = await api(PORTS.desk, '/json/eff');
+    const fx = eff.indexOf('Rainbow');
+    await api(PORTS.bedroom, '/json/state', { seg: [{ id: 0, fx: 0 }] });
+    const deskBefore = JSON.stringify((await state(PORTS.desk)).seg);
+    await win.click('.chip-btn:has-text("Übertragen")');
+    await win.click('.popover .copy-groups .check:has-text("E2E Gruppe")');
+    await win.click('.popover .btn.primary');
+    await waitFor(async () => (await state(PORTS.bedroom)).seg[0].fx === fx, 'Bedroom über die Gruppe');
+    expect(JSON.stringify((await state(PORTS.desk)).seg) === deskBefore, 'Quelle hat sich verändert');
+    await win.waitForSelector('.toast:has-text("Look auf 1 Gerät übertragen")', { timeout: 4000 });
+  });
+
+  await step('Eigene Palette: Übertragen gesperrt, Grund steht im Popover', async () => {
+    await api(PORTS.desk, '/json/state', { seg: [{ id: 0, pal: 255 }] });
+    await mainSeg('dev-desk', (s) => s.pal === 255, 'Desk mit eigener Palette');
+    await win.click('.chip-btn:has-text("Übertragen")');
+    await win.waitForSelector('.popover .error:has-text("Eigene Paletten lassen sich nicht übertragen")');
+    await win.click('.popover .copy-devices .check:has-text("Mock Bedroom")');
+    expect(await win.locator('.popover .btn.primary').isDisabled(), '„Übertragen“ ist nicht gesperrt');
+    await win.keyboard.press('Escape');
+    await api(PORTS.desk, '/json/state', { seg: [{ id: 0, pal: 0 }] });
+  });
+
   await step('Dialog sucht beim Öffnen per mDNS', async () => {
     await win.click('.sidebar-foot .btn:has-text("Gerät")');
     await win.waitForFunction(() => document.querySelectorAll('.scan-row').length === 3, null, { timeout: 8000 });
