@@ -181,7 +181,7 @@ export const EN: Record<string, string> = {
   'Segment {id}': 'Segment {id}',
   'Segment anlegen': 'Create segment',
   'Segment {id} angelegt': 'Segment {id} created',
-  'Segment „{name}“ löschen?': 'Delete segment “{name}“?',
+  'Segment „{name}“ löschen?': 'Delete segment “{name}”?',
   'Segment ein/aus': 'Segment on/off',
   'Segment-Helligkeit': 'Segment brightness',
   'Hauptsegment': 'main segment',
@@ -214,7 +214,7 @@ export const EN: Record<string, string> = {
   'Zustand als Preset speichern': 'Save state as preset',
   'Presets werden geladen …': 'Loading presets …',
   'Noch keine Presets. „Aktuellen Zustand speichern“ legt das erste an.':
-    'No presets yet. “Save current state“ creates the first one.',
+    'No presets yet. “Save current state” creates the first one.',
   'Kein Preset passt zur Suche.': 'No preset matches your search.',
   'Playlist mit {n} Einträgen': 'playlist with {n} entries',
   'Quick-Load': 'Quick load',
@@ -239,16 +239,16 @@ export const EN: Record<string, string> = {
   'Lege zuerst normale Presets an — eine Playlist spielt sie nacheinander ab.':
     'Create regular presets first — a playlist plays them one after another.',
   'Die ID muss zwischen 1 und 250 liegen.': 'The ID must be between 1 and 250.',
-  'ID {id} ist schon belegt („{name}“). Überschreiben?': 'ID {id} is already used (“{name}“). Overwrite?',
+  'ID {id} ist schon belegt („{name}“). Überschreiben?': 'ID {id} is already used (“{name}”). Overwrite?',
   'Die Playlist braucht mindestens einen Eintrag.': 'The playlist needs at least one entry.',
   'Bitte einen API-Befehl eintragen oder „Aktuellen Zustand speichern“ wählen.':
-    'Enter an API command or choose “Save current state“.',
+    'Enter an API command or choose “Save current state”.',
   'Der JSON-Befehl ist fehlerhaft.': 'The JSON command is invalid.',
   'Speichern fehlgeschlagen': 'Saving failed',
   'Löschen fehlgeschlagen': 'Deleting failed',
-  '„{name}“ gespeichert': '“{name}“ saved',
-  '„{name}“ gelöscht': '“{name}“ deleted',
-  '„{name}“ löschen?': 'Delete “{name}“?',
+  '„{name}“ gespeichert': '“{name}” saved',
+  '„{name}“ gelöscht': '“{name}” deleted',
+  '„{name}“ löschen?': 'Delete “{name}”?',
 
   // Gerät hinzufügen und bearbeiten
   'Per Adresse': 'By address',
@@ -277,7 +277,7 @@ export const EN: Record<string, string> = {
   'Leer lassen, um den Namen vom Gerät zu übernehmen. Den Gerätenamen selbst änderst du unter Einstellungen → Oberfläche.':
     "Leave empty to use the device's own name. The device name itself is set under Settings → User interface.",
   '„{name}“ aus der App entfernen? Am Gerät selbst ändert sich nichts.':
-    'Remove “{name}“ from the app? Nothing changes on the device itself.',
+    'Remove “{name}” from the app? Nothing changes on the device itself.',
   'Bitte eine IP-Adresse oder einen Hostnamen eingeben.': 'Please enter an IP address or hostname.',
   'Unter {host} antwortet kein WLED-Gerät.': 'No WLED device responds at {host}.',
   'Gerät nicht gefunden': 'Device not found',
@@ -303,7 +303,7 @@ export const EN: Record<string, string> = {
   'Live-Daten': 'Live data',
   'von {ip}': 'from {ip}',
   'Neu starten': 'Reboot',
-  '„{name}“ jetzt neu starten?': 'Reboot “{name}“ now?',
+  '„{name}“ jetzt neu starten?': 'Reboot “{name}” now?',
   'Neustart ausgelöst': 'Reboot triggered',
   'Neustart fehlgeschlagen': 'Reboot failed',
   'Gerätedaten werden neu geladen': 'Reloading device data',
@@ -361,7 +361,7 @@ export const EN: Record<string, string> = {
   'Das Gerät erlaubt höchstens {n} Segmente.': 'The device allows at most {n} segments.',
   'Bitte einen Namen eingeben.': 'Please enter a name.',
   'Der Name darf höchstens {n} Zeichen haben.': 'The name can be at most {n} characters long.',
-  'Eine Gruppe „{name}“ gibt es schon.': 'A group named “{name}“ already exists.',
+  'Eine Gruppe „{name}“ gibt es schon.': 'A group named “{name}” already exists.',
   'Gruppe nicht gefunden': 'Group not found',
   'Bitte mindestens ein Gerät auswählen.': 'Please select at least one device.',
   'Gruppen': 'Groups',
@@ -372,13 +372,13 @@ export const EN: Record<string, string> = {
   'Gruppe anlegen': 'New group',
   'Gruppe bearbeiten': 'Edit group',
   'Geräte in dieser Gruppe': 'Devices in this group',
-  'Gruppe „{name}“ löschen? Die Lampen bleiben, wie sie sind.': 'Delete group “{name}“? The lights stay as they are.',
+  'Gruppe „{name}“ löschen? Die Lampen bleiben, wie sie sind.': 'Delete group “{name}”? The lights stay as they are.',
 
   // Copy Look
   'Effektliste noch nicht geladen': 'Effect list not loaded yet',
   'Eigene Paletten lassen sich nicht übertragen': 'Custom palettes can’t be copied',
-  'Effekt „{name}“ gibt es dort nicht': 'No effect “{name}“ there',
-  'Palette „{name}“ gibt es dort nicht': 'No palette “{name}“ there',
+  'Effekt „{name}“ gibt es dort nicht': 'No effect “{name}” there',
+  'Palette „{name}“ gibt es dort nicht': 'No palette “{name}” there',
   'Look nicht übertragen': 'Look not copied',
   'Look auf 1 Gerät übertragen': 'Look copied to 1 device',
   'Look auf {n} Geräte übertragen': 'Look copied to {n} devices',
