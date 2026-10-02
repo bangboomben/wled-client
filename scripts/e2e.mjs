@@ -19,11 +19,14 @@ const EXE = arg('--exe');
 mkdirSync(SHOTS, { recursive: true });
 
 const PORTS = { desk: 18281, bedroom: 18282, extra: 18283 };
+const MDNS_PORT = 18353;
 const mock = spawn(
   process.execPath,
   [
     '--no-warnings',
     'scripts/mock-wled.mjs',
+    '--mdns',
+    String(MDNS_PORT),
     `${PORTS.desk}:desk:Mock Desk`,
     `${PORTS.bedroom}:bedroom:Mock Bedroom`,
     `${PORTS.extra}:bedroom:Mock Extra`,
@@ -72,11 +75,19 @@ const waitFor = async (fn, msg, timeout = 4000) => {
   }
 };
 
-const app = await electron.launch({
-  ...(EXE ? { executablePath: path.resolve(EXE), args: [] } : { args: ['.'] }),
-  env: { ...process.env, WLED_CLIENT_USER_DATA: userData, WLED_CLIENT_KEEP_FLYOUT: '1' },
-  colorScheme: 'dark',
-});
+// mDNS-Anfragen gehen an den Mock statt ins Netzwerk
+const launch = (dataDir) =>
+  electron.launch({
+    ...(EXE ? { executablePath: path.resolve(EXE), args: [] } : { args: ['.'] }),
+    env: {
+      ...process.env,
+      WLED_CLIENT_USER_DATA: dataDir,
+      WLED_CLIENT_KEEP_FLYOUT: '1',
+      WLED_CLIENT_MDNS_TARGET: `127.0.0.1:${MDNS_PORT}`,
+    },
+    colorScheme: 'dark',
+  });
+const app = await launch(userData);
 const consoleErrors = [];
 
 try {
@@ -229,18 +240,30 @@ try {
     await win.waitForFunction(() => document.querySelector('.hero-pct')?.textContent?.includes('71'));
   });
 
-  await step('Gerät hinzufügen per Adresse', async () => {
+  await step('Dialog sucht beim Öffnen per mDNS', async () => {
     await win.click('.sidebar-foot .btn:has-text("Gerät")');
+    await win.waitForFunction(() => document.querySelectorAll('.scan-row').length === 3, null, { timeout: 8000 });
+    await win.waitForFunction(() => !document.querySelector('.modal .discover-btn')?.disabled, null, { timeout: 8000 });
+    const known = await win.$$eval('.scan-row .pill', (els) => els.length);
+    expect(known === 2, `als vorhanden markiert: ${known}`);
+    await win.screenshot({ path: path.join(SHOTS, '09-hinzufuegen.png') });
+  });
+
+  await step('Gerät hinzufügen per Adresse', async () => {
     await win.fill('.modal .inline-form input >> nth=0', `127.0.0.1:${PORTS.extra}`);
     await win.click('.modal .inline-form .btn.primary');
     await win.waitForFunction(() => document.querySelectorAll('.device-row').length === 3, null, { timeout: 6000 });
   });
 
-  await step('Netzwerksuche findet Geräte', async () => {
-    await win.fill('.modal .inline-form input >> nth=1', `127.0.0.1:${PORTS.desk}, 127.0.0.1:${PORTS.bedroom}, 127.0.0.1:${PORTS.extra}, 127.0.0.1:1`);
-    await win.click('.modal .btn:has-text("Suchen")');
-    await win.waitForFunction(() => document.querySelectorAll('.scan-row').length === 3, null, { timeout: 8000 });
-    await win.screenshot({ path: path.join(SHOTS, '09-hinzufuegen.png') });
+  await step('Adressbereich durchsuchen', async () => {
+    await win.click('.modal .sweep summary');
+    await win.fill('.modal .sweep input', `127.0.0.1:${PORTS.desk}, 127.0.0.1:${PORTS.bedroom}, 127.0.0.1:${PORTS.extra}, 127.0.0.1:1`);
+    await win.click('.modal .sweep-btn');
+    await win.waitForFunction(() => document.querySelector('.modal .scan-status')?.textContent?.startsWith('Fertig'), null, { timeout: 8000 });
+    const rows = await win.$$eval('.scan-row', (els) => els.length);
+    const known = await win.$$eval('.scan-row .pill', (els) => els.length);
+    expect(rows === 3 && known === 3, `Treffer ${rows}, vorhanden ${known}`);
+    await win.screenshot({ path: path.join(SHOTS, '09b-adressbereich.png') });
     await win.keyboard.press('Escape');
   });
 
@@ -310,9 +333,25 @@ try {
   });
 } finally {
   await app.close().catch(() => {});
-  mock.kill();
   rmSync(userData, { recursive: true, force: true });
 }
+
+await step('Erster Start übernimmt die Geräte aus der mDNS-Suche', async () => {
+  const fresh = mkdtempSync(path.join(tmpdir(), 'wled-client-first-'));
+  writeFileSync(path.join(fresh, 'settings.json'), JSON.stringify({ theme: 'dark', trayHintShown: true, language: 'de' }));
+  const first = await launch(fresh);
+  try {
+    await waitFor(async () => first.windows().length >= 2, 'beide Fenster', 15000);
+    const w = first.windows().find((x) => x.url().includes('index.html'));
+    await w.waitForFunction(() => document.querySelectorAll('.device-row').length === 3, null, { timeout: 15000 });
+    const names = await w.$$eval('.device-row .device-name', (els) => els.map((e) => e.textContent).sort());
+    expect(names.join('|') === 'Mock Bedroom|Mock Desk|Mock Extra', `Namen: ${names}`);
+  } finally {
+    await first.close().catch(() => {});
+    rmSync(fresh, { recursive: true, force: true });
+  }
+});
+mock.kill();
 
 console.log(results.join('\n'));
 if (consoleErrors.length) {

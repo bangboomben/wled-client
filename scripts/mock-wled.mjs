@@ -1,11 +1,14 @@
 // Simuliertes WLED-Gerät für Entwicklung und Tests — schaltet keine echten Lampen.
 //
-//   node scripts/mock-wled.mjs 8181:desk:"Mock Desk" 8182:bedroom:"Mock Bedroom"
+//   node scripts/mock-wled.mjs [--mdns 15353] 8181:desk:"Mock Desk" 8182:bedroom:"Mock Bedroom"
 //
 // Je Argument ein Gerät: Port, Fixture-Ordner (mock/fixtures/<name>), Anzeigename.
+// --mdns <port>: beantwortet mDNS-Anfragen nach _wled._tcp.local per Unicast auf 127.0.0.1:<port>
+// (die App fragt dort statt im Netzwerk, wenn WLED_CLIENT_MDNS_TARGET=127.0.0.1:<port> gesetzt ist).
 // Die Fixtures sind echte API-Antworten (WLED 16.0.1) ohne MAC, IP und WLAN-Daten.
 // Zusatzendpunkte für Tests: GET /__log (empfangene Befehle), POST /__reset.
 
+import dgram from 'node:dgram';
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
@@ -21,13 +24,14 @@ const hsv = (h) => {
 };
 const META_KEYS = ['psave', 'pdel', 'ps', 'pl', 'ib', 'sb', 'sc', 'o', 'n', 'ql', 'playlist', 'v', 'rb', 'fxdef', 'bootps', 'lv'];
 
-function createDevice(port, fixture, name, index) {
+function createDevice(port, fixture, name) {
   const load = (file) => JSON.parse(readFileSync(new URL(`${fixture}/${file}`, FIXTURES), 'utf8'));
   const base = load('json.json');
   const fxdata = load('fxdata.json');
   const palx = load('palx.json');
   const channels = base.info.leds.rgbw ? 4 : 3;
-  const mac = `02000000bb${String(index).padStart(2, '0')}`;
+  // Aus dem Port abgeleitet, damit auch Geräte aus getrennten Mock-Prozessen verschiedene MACs haben
+  const mac = `0200000${port.toString(16).padStart(5, '0')}`;
 
   let state;
   let presets;
@@ -234,12 +238,68 @@ function createDevice(port, fixture, name, index) {
   }, 60);
 
   server.listen(port, '127.0.0.1', () => console.log(`Mock-WLED „${name}“ (${fixture}) auf http://127.0.0.1:${port}`));
-  return server;
+  return { port, mac };
+}
+
+// ------------------------------------------------------------------ mDNS
+
+const SERVICE = '_wled._tcp.local';
+
+const encodeName = (name) =>
+  Buffer.concat([...name.split('.').map((l) => Buffer.concat([Buffer.from([Buffer.byteLength(l)]), Buffer.from(l)])), Buffer.from([0])]);
+
+const record = (name, type, data) => {
+  const head = Buffer.alloc(10);
+  head.writeUInt16BE(type, 0);
+  head.writeUInt16BE(1, 2); // Klasse IN, ohne Cache-Flush (Legacy-Unicast-Antwort)
+  head.writeUInt32BE(120, 4);
+  head.writeUInt16BE(data.length, 8);
+  return Buffer.concat([encodeName(name), head, data]);
+};
+
+/** Beantwortet Anfragen nach _wled._tcp.local wie ein WLED-Gerät im Legacy-Unicast-Modus (RFC 6762 §6.7). */
+function startMdns(port, devices) {
+  const sock = dgram.createSocket('udp4');
+  sock.on('message', (msg, rinfo) => {
+    if (msg.length < 17 || msg.readUInt16BE(2) & 0x8000) return;
+    const labels = [];
+    let pos = 12;
+    while (msg[pos]) {
+      labels.push(msg.toString('utf8', pos + 1, pos + 1 + msg[pos]));
+      pos += 1 + msg[pos];
+    }
+    if (labels.join('.').toLowerCase() !== SERVICE) return;
+    const question = msg.subarray(12, pos + 5);
+    const answers = [];
+    const extra = [];
+    for (const d of devices) {
+      const instance = `wled-${d.mac.slice(-6)}.${SERVICE}`;
+      const target = `wled-${d.mac.slice(-6)}.local`;
+      answers.push(record(SERVICE, 12, encodeName(instance)));
+      const srv = Buffer.alloc(6);
+      srv.writeUInt16BE(d.port, 4);
+      extra.push(record(instance, 33, Buffer.concat([srv, encodeName(target)])));
+      const txt = Buffer.from(`mac=${d.mac}`);
+      extra.push(record(instance, 16, Buffer.concat([Buffer.from([txt.length]), txt])));
+      extra.push(record(target, 1, Buffer.from([127, 0, 0, 1])));
+    }
+    const header = Buffer.alloc(12);
+    header.writeUInt16BE(msg.readUInt16BE(0), 0);
+    header.writeUInt16BE(0x8400, 2);
+    header.writeUInt16BE(1, 4);
+    header.writeUInt16BE(answers.length, 6);
+    header.writeUInt16BE(extra.length, 10);
+    sock.send(Buffer.concat([header, question, ...answers, ...extra]), rinfo.port, rinfo.address);
+  });
+  sock.bind(port, '127.0.0.1', () => console.log(`Mock-mDNS auf udp://127.0.0.1:${port}`));
 }
 
 const args = process.argv.slice(2);
+const mdnsAt = args.indexOf('--mdns');
+const mdnsPort = mdnsAt >= 0 ? Number(args.splice(mdnsAt, 2)[1]) : 0;
 const specs = args.length ? args : ['8181:desk:Mock Desk', '8182:bedroom:Mock Bedroom'];
-specs.forEach((spec, i) => {
+const devices = specs.map((spec) => {
   const [port, fixture, ...nameParts] = spec.split(':');
-  createDevice(Number(port), fixture, nameParts.join(':') || `Mock ${fixture}`, i + 1);
+  return createDevice(Number(port), fixture, nameParts.join(':') || `Mock ${fixture}`);
 });
+if (mdnsPort) startMdns(mdnsPort, devices);

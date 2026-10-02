@@ -14,7 +14,6 @@ export const EN: Record<string, string> = {
   'Verwerfen': 'Discard',
   'Zuklappen': 'Collapse',
   'Auswählen': 'Select',
-  'Suchen': 'Search',
   'Suche leeren': 'Clear search',
   'Beenden': 'Quit',
   'Name': 'Name',
@@ -255,9 +254,15 @@ export const EN: Record<string, string> = {
   'Prüfe …': 'Checking …',
   'Hinzufügen fehlgeschlagen': 'Adding failed',
   '{host} hinzugefügt': '{host} added',
-  'Im Netzwerk suchen': 'Scan the network',
-  'Fragt jede Adresse der angegebenen Netze nach WLED. Andere Netze, etwa über VPN, mit Komma ergänzen (Schreibweise 192.168.2.0/24).':
-    'Asks every address of the given networks for WLED. Add other networks, e.g. over VPN, separated by commas (format 192.168.2.0/24).',
+  'Im Netzwerk suchen': 'Find on your network',
+  'Findet WLED-Geräte, die sich im Netzwerk melden (mDNS und WLED-Knotenliste).':
+    'Finds WLED devices that announce themselves on the network (mDNS and the WLED node list).',
+  'Suche läuft …': 'Searching …',
+  'Erneut suchen': 'Search again',
+  'Gerät nicht dabei? Adressbereich durchsuchen': 'Device missing? Scan an address range',
+  'Fragt jede Adresse der angegebenen Netze einzeln nach WLED — für Geräte, die sich nicht melden, etwa hinter einem VPN. Mehrere Netze mit Komma trennen (Schreibweise 192.168.2.0/24, höchstens /22).':
+    "Asks every address in the given networks for WLED, one by one — for devices that don't announce themselves, e.g. behind a VPN. Separate several networks with commas (notation 192.168.2.0/24, at most /22).",
+  'Durchsuchen': 'Scan',
   'Netze für die Suche': 'Networks to scan',
   'Suchfortschritt': 'Scan progress',
   '{done} von {total} Adressen geprüft': '{done} of {total} addresses checked',

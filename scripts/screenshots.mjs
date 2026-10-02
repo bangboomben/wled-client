@@ -68,7 +68,8 @@ writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dar
 const launchedAt = Date.now();
 const app = await electron.launch({
   args: ['.'],
-  env: { ...process.env, WLED_CLIENT_USER_DATA: userData, WLED_CLIENT_KEEP_FLYOUT: '1' },
+  // Gerätesuche nie ins echte Netz: mDNS an einen Port, auf dem niemand antwortet
+  env: { ...process.env, WLED_CLIENT_USER_DATA: userData, WLED_CLIENT_KEEP_FLYOUT: '1', WLED_CLIENT_MDNS_TARGET: '127.0.0.1:9' },
   colorScheme: 'dark',
   ...(DEMO ? { recordVideo: { dir: videoDir, size: { width: 1220, height: 820 } } } : {}),
 });

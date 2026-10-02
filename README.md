@@ -35,9 +35,11 @@ power and brightness of all lights from the Windows tray without opening anythin
   - **Presets & playlists** — apply, save current state, raw API commands, quick-load labels, boot preset,
     playlists with per-entry duration and transition, repeat, end preset, shuffle
   - **Nightlight**, **UDP sync**, **live LED preview**, **device info**, reboot
-- **Device settings pages** (Wi-Fi, LED setup, sync, time, usermods, OTA update …) open in their own window
-- **Network discovery** — finds WLED devices on your subnet automatically; devices on other subnets
-  (VPN, second site) can be added by IP or by scanning their subnet
+- **Device settings pages** (Wi-Fi, LED setup, sync, time, usermods, OTA update …) and the device's own web UI
+  open in their own window
+- **Network discovery** — finds WLED devices that announce themselves (mDNS and the WLED node list), in networks
+  of any size; devices on other subnets (VPN, second site) can be added by IP or found with an optional
+  address-range scan
 - **Instant feedback** — live state over WebSocket; dragging a slider only ever sends the latest value
 - **Gentle on weak Wi-Fi** — one request per device at a time, small requests first, missing data retried later
 - **Light and dark theme**, follows Windows by default
@@ -62,8 +64,8 @@ power and brightness of all lights from the Windows tray without opening anythin
    click **More info → Run anyway**. Free code signing through the SignPath Foundation is in progress —
    see the [code signing policy](CODE_SIGNING.md).
 
-On first start the app scans your local network (/24) and adds every WLED device it finds.
-Devices on other subnets: **+ Gerät** (add device) → enter the IP, or add the subnet to the scan (e.g. `192.168.2.0/24`).
+On first start the app looks for WLED devices that announce themselves on your network (mDNS) and adds them.
+Devices on other subnets: **+ Device** → enter the IP, or open *Scan an address range* (e.g. `192.168.2.0/24`).
 
 Windows 11 puts new tray icons into the overflow menu (^) — drag the icon onto the taskbar to keep the
 quick-access one click away. Closing the window keeps the app running in the tray (configurable);
@@ -86,13 +88,30 @@ Settings and the device list live in `%APPDATA%\WLED Client\`.
 **Does it change anything on my devices?** Only what you do in the app — the same JSON API commands the web UI
 sends. It never writes device configuration on its own.
 
-**Why doesn't it find a device?** Discovery checks `/json/info` on every address of the subnet. Devices behind
-a VPN or on another subnet must be added by IP. Controllers with very weak Wi-Fi may need a second scan.
+**Why doesn't it find a device?** Discovery relies on what WLED announces by itself: mDNS (`_wled._tcp`, on by
+default) and the list of other WLED nodes each device keeps (`/json/nodes`). Neither crosses routers or VPNs — add
+such devices by IP, or scan their address range from the *Add device* dialog. Controllers with very weak Wi-Fi may
+need a second search.
+
+**Why not just use Home Assistant?** Use both — they talk to the same API. Home Assistant's WLED integration is
+the right place for automations, but it exposes only speed and intensity per effect. WLED Client shows every slider
+and option the firmware defines for the selected effect, with the firmware's own labels, plus segments, playlists
+and the live preview, without building a dashboard.
 
 **Live preview stopped?** WLED streams the live preview to one client at a time — opening "Peek" in the web UI
 takes it over.
 
 **Does it need internet or a cloud account?** No. Everything is local HTTP and WebSocket to your controllers.
+
+## Alternatives
+
+- **The official WLED app** for [Android](https://play.google.com/store/apps/details?id=ca.cgagnier.wlednativeandroid)
+  and [iOS](https://apps.apple.com/us/app/wled-official-app/id6446207239) — also runs on Apple-silicon Macs.
+- **[WLED-Desktop](https://github.com/Moustachauve/WLED-Desktop)** — desktop app by the author of the official
+  app, in the [Microsoft Store](https://apps.microsoft.com/detail/9ntbcf05x6pg).
+- **[Home Assistant](https://www.home-assistant.io/integrations/wled/)** — WLED integration for automations and
+  dashboards.
+- The device's own web UI — WLED Client opens it in a window, too.
 
 ## Development
 
