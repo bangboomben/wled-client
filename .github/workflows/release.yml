@@ -35,7 +35,13 @@ jobs:
         run: npm run dist
       - name: End-to-end tests (simulated devices, packaged app)
         timeout-minutes: 10
-        run: node scripts/e2e.mjs --exe "release/win-unpacked/WLED Client.exe"
+        run: node scripts/e2e.mjs --exe "release/win-unpacked/WLED Client.exe" --shots e2e-shots
+      - name: Upload e2e screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-shots
+          path: e2e-shots
       - name: Upload unsigned installer
         id: upload
         uses: actions/upload-artifact@v7

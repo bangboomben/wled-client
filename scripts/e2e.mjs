@@ -3,7 +3,7 @@
 // Startet die gebaute App über Playwright mit eigenem Datenverzeichnis, klickt die
 // Hauptwege durch und prüft, was beim Gerät ankommt.
 
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -77,9 +77,57 @@ async function step(name, fn) {
   }
 }
 
-/** Beendet die App; reagiert sie nicht, wird der Prozess hart beendet. */
-async function closeApp(electronApp) {
+/** Protokolliert im Hauptprozess, wie weit das Beenden kommt (Ausgabe als „[app] quit: …“). */
+async function traceQuit(electronApp) {
+  await electronApp
+    .evaluate(({ app, BrowserWindow }) => {
+      const log = (msg) => process.stderr.write(`quit: ${msg}\n`);
+      for (const ev of ['before-quit', 'will-quit', 'quit']) app.on(ev, () => log(ev));
+      for (const w of BrowserWindow.getAllWindows()) {
+        const name = `${w.getTitle()} (${w.webContents.getURL().split('/').pop()})`;
+        w.on('close', (e) => setImmediate(() => log(`close ${name}${e.defaultPrevented ? ' VERHINDERT' : ''}`)));
+        w.on('closed', () => log(`closed ${name}`));
+        w.on('unresponsive', () => log(`unresponsive ${name}`));
+        w.webContents.on('render-process-gone', (_e, d) => log(`render-process-gone ${name} ${d.reason}`));
+      }
+      log(`${BrowserWindow.getAllWindows().length} Fenster`);
+    })
+    .catch((err) => console.log(`  traceQuit: ${err.message}`));
+}
+
+/** Hält fest, was die hängende App gerade zeigt: Prozesse mit Fenstertiteln und ein Bild des Bildschirms. */
+function captureHang(label) {
+  try {
+    console.log(execFileSync('tasklist', ['/v', '/fo', 'list', '/fi', 'imagename eq WLED Client.exe'], { encoding: 'utf8' }));
+  } catch (err) {
+    console.log(`  tasklist: ${err.message}`);
+  }
+  const file = path.join(SHOTS, `haenger-${label}.png`);
+  const ps = [
+    'Add-Type -AssemblyName System.Windows.Forms, System.Drawing',
+    '$b = [System.Windows.Forms.SystemInformation]::VirtualScreen',
+    '$bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height',
+    '$g = [System.Drawing.Graphics]::FromImage($bmp)',
+    '$g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)',
+    `$bmp.Save('${file}')`,
+  ].join('; ');
+  try {
+    execFileSync('powershell', ['-NoProfile', '-Command', ps], { stdio: 'ignore', timeout: 20_000 });
+    console.log(`  Bildschirmfoto: ${file}`);
+  } catch (err) {
+    console.log(`  Bildschirmfoto fehlgeschlagen: ${err.message}`);
+  }
+}
+
+/** Beendet die App. Reagiert sie nicht, wird festgehalten, woran es hängt, und der Prozessbaum beendet. */
+const finished = new WeakSet();
+async function closeApp(electronApp, label) {
+  // Nach close() lässt sich das Objekt nicht mehr abfragen
+  if (finished.has(electronApp)) return true;
+  finished.add(electronApp);
   const proc = electronApp.process();
+  await traceQuit(electronApp);
+  const started = Date.now();
   const closed = await Promise.race([
     electronApp.close().then(
       () => true,
@@ -87,11 +135,22 @@ async function closeApp(electronApp) {
     ),
     new Promise((r) => setTimeout(() => r(false), 15_000)),
   ]);
-  if (!closed) {
-    console.log('  App reagiert nicht auf Beenden, Prozess wird beendet');
+  if (closed) {
+    console.log(`  ${label}: beendet nach ${Date.now() - started} ms`);
+    return true;
+  }
+  console.log(`  ${label}: reagiert nicht auf Beenden`);
+  captureHang(label);
+  try {
+    execFileSync('taskkill', ['/pid', String(proc.pid), '/t', '/f'], { stdio: 'ignore' });
+  } catch {
     proc.kill();
   }
+  return false;
 }
+
+/** Löscht ein Testverzeichnis; Windows gibt Dateien eines eben beendeten Prozesses erst verzögert frei. */
+const removeDir = (dir) => rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 const expect = (cond, msg) => {
   if (!cond) throw new Error(msg);
 };
@@ -384,9 +443,13 @@ try {
     await waitFor(async () => /An|Aus/.test(await sub()), 'Flaky wieder verbunden', 20000);
     lone.kill();
   });
+
+  await step('App lässt sich beenden', async () => {
+    expect(await closeApp(app, 'Hauptlauf'), 'App reagiert nicht auf Beenden');
+  });
 } finally {
-  await closeApp(app);
-  rmSync(userData, { recursive: true, force: true });
+  await closeApp(app, 'Hauptlauf');
+  removeDir(userData);
 }
 
 await step('Erster Start übernimmt die Geräte aus der mDNS-Suche', async () => {
@@ -399,9 +462,10 @@ await step('Erster Start übernimmt die Geräte aus der mDNS-Suche', async () =>
     await w.waitForFunction(() => document.querySelectorAll('.device-row').length === 3, null, { timeout: 15000 });
     const names = await w.$$eval('.device-row .device-name', (els) => els.map((e) => e.textContent).sort());
     expect(names.join('|') === 'Mock Bedroom|Mock Desk|Mock Extra', `Namen: ${names}`);
+    expect(await closeApp(first, 'Erster Start'), 'App reagiert nicht auf Beenden');
   } finally {
-    await closeApp(first);
-    rmSync(fresh, { recursive: true, force: true });
+    await closeApp(first, 'Erster Start');
+    removeDir(fresh);
   }
 });
 mock.kill();
