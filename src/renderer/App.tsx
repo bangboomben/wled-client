@@ -5,7 +5,7 @@ import { AddDeviceDialog, AppSettingsDialog, DeviceEditDialog, ScanProgressBar }
 import { Toasts } from './components/controls';
 import { Icon, Logo } from './components/Icon';
 import { Sidebar } from './components/Sidebar';
-import { store, useDevices, useScan, wled } from './lib/store';
+import { store, useDevices, useGroups, useScan, wled } from './lib/store';
 import { accentFor } from './lib/wled';
 
 type Dialog = { type: 'add' } | { type: 'settings' } | { type: 'edit'; id: string } | null;
@@ -49,6 +49,7 @@ const isTyping = (t: EventTarget | null) =>
 
 export function App() {
   const devices = useDevices();
+  const groups = useGroups();
   const [selectedId, setSelectedId] = useState<string | undefined>(() => store.settings.selectedId);
   const [dialog, setDialog] = useState<Dialog>(null);
   const selected = devices.find((d) => d.id === selectedId) ?? devices[0];
@@ -99,6 +100,7 @@ export function App() {
     <div className="app">
       <Sidebar
         devices={devices}
+        groups={groups}
         selectedId={selectedKey}
         onSelect={setSelectedId}
         onAdd={() => setDialog({ type: 'add' })}

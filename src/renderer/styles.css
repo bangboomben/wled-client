@@ -844,6 +844,35 @@ input:disabled {
   background: var(--panel-3);
 }
 
+.list-heading {
+  padding: 10px 12px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Gruppen in der Grundfarbe der App: --accent am Wurzelelement folgt dem gewählten Gerät. */
+.group-row {
+  --accent: #f5a524;
+  --accent-contrast: #111318;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 10px 12px 8px;
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.group-row.offline .device-name {
+  color: var(--muted);
+}
+
+.group-icon {
+  color: var(--text-2);
+}
+
 .main {
   display: flex;
   flex-direction: column;
@@ -1943,6 +1972,11 @@ body.is-flyout #root {
 
 .flyout-row:hover {
   background: var(--panel);
+}
+
+.flyout .group-row {
+  background: var(--panel);
+  margin-bottom: 6px;
 }
 
 .flyout-foot {

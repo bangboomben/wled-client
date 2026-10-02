@@ -59,6 +59,7 @@ writeFileSync(
   ]),
 );
 writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'de' }));
+writeFileSync(path.join(userData, 'groups.json'), JSON.stringify([{ id: 'grp-e2e', name: 'E2E Gruppe', members: ['dev-desk', 'dev-bedroom'] }]));
 
 let failures = 0;
 const results = [];
@@ -376,6 +377,46 @@ try {
     await fly.locator('.flyout-row:has-text("Mock Desk") .slider').fill('180');
     await waitFor(async () => (await state(PORTS.desk)).bri === 180, 'Desk bri 180');
     await win.waitForFunction(() => document.querySelector('.hero-pct')?.textContent?.includes('71'));
+  });
+
+  await step('Gruppe in Seitenleiste und Tray, Schalter schaltet alle', async () => {
+    const row = win.locator('.group-row:has-text("E2E Gruppe")');
+    await row.waitFor({ timeout: 5000 });
+    await fly.locator('.group-row:has-text("E2E Gruppe")').waitFor({ timeout: 5000 });
+    const members = await row.locator('.device-sub').textContent();
+    expect(members === 'Mock Desk, Mock Bedroom', `Mitglieder: ${members}`);
+    await api(PORTS.desk, '/json/state', { on: true });
+    await api(PORTS.bedroom, '/json/state', { on: false });
+    await win.waitForFunction(() => document.querySelector('.group-row .toggle')?.getAttribute('aria-checked') === 'true');
+    await row.locator('.toggle').click();
+    await waitFor(async () => !(await state(PORTS.desk)).on && !(await state(PORTS.bedroom)).on, 'beide aus');
+    await row.locator('.toggle').click();
+    await waitFor(async () => (await state(PORTS.desk)).on && (await state(PORTS.bedroom)).on, 'beide an');
+  });
+
+  await step('Gruppenregler dimmt anteilig, auch per Tastatur', async () => {
+    const slider = win.locator('.group-row:has-text("E2E Gruppe") .slider');
+    await api(PORTS.desk, '/json/state', { on: true, bri: 200 });
+    await api(PORTS.bedroom, '/json/state', { on: true, bri: 100 });
+    await win.waitForFunction(() => document.querySelector('.group-row .slider')?.value === '200');
+    await slider.fill('100');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 100 && (await state(PORTS.bedroom)).bri === 50, 'Desk 100, Bedroom 50');
+    await win.waitForTimeout(1000); // Zug ist nach 800 ms ohne Änderung beendet
+    await slider.focus();
+    await win.keyboard.press('End');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 255 && (await state(PORTS.bedroom)).bri === 128, 'Ende: Desk 255, Bedroom 128');
+  });
+
+  await step('Gruppenregler schaltet eine ausgeschaltete Gruppe anteilig ein', async () => {
+    await api(PORTS.desk, '/json/state', { on: false, bri: 200 });
+    await api(PORTS.bedroom, '/json/state', { on: false, bri: 100 });
+    await win.waitForFunction(() => document.querySelector('.group-row .toggle')?.getAttribute('aria-checked') === 'false');
+    await win.waitForTimeout(1000);
+    await win.locator('.group-row:has-text("E2E Gruppe") .slider').fill('100');
+    await waitFor(async () => {
+      const [d, b] = [await state(PORTS.desk), await state(PORTS.bedroom)];
+      return d.on && b.on && d.bri === 100 && b.bri === 50;
+    }, 'beide an mit 100 und 50');
   });
 
   await step('Dialog sucht beim Öffnen per mDNS', async () => {

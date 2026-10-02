@@ -1,9 +1,10 @@
 import { useRef, useState, type CSSProperties } from 'react';
 import { t } from '../../shared/i18n';
-import type { DeviceSnapshot } from '../../shared/types';
+import type { DeviceGroup, DeviceSnapshot } from '../../shared/types';
 import { send, sendAll, useUpdate, wled } from '../lib/store';
 import { accentFor, displayColor, pct, viewSeg } from '../lib/wled';
 import { Slider, Toggle } from './controls';
+import { GroupRow } from './Groups';
 import { Icon, Logo } from './Icon';
 
 export function statusText(d: DeviceSnapshot): string {
@@ -149,6 +150,7 @@ function UpdateNotice() {
 
 export function Sidebar({
   devices,
+  groups,
   selectedId,
   onSelect,
   onAdd,
@@ -156,6 +158,7 @@ export function Sidebar({
   onEdit,
 }: {
   devices: DeviceSnapshot[];
+  groups: DeviceGroup[];
   selectedId?: string;
   onSelect: (id: string) => void;
   onAdd: () => void;
@@ -179,19 +182,30 @@ export function Sidebar({
         <Logo />
         <span className="app-title">WLED Client</span>
       </div>
-      <div className="device-list" role="listbox" aria-label={t('Geräte')}>
-        {devices.map((d, i) => (
-          <DeviceRow
-            key={d.id}
-            device={d}
-            index={i}
-            active={d.id === selectedId}
-            onSelect={onSelect}
-            onEdit={onEdit}
-            onMove={move}
-          />
-        ))}
-        {devices.length === 0 && <p className="sidebar-empty">{t('Noch keine Geräte.')}</p>}
+      <div className="device-list">
+        {groups.length > 0 && (
+          <>
+            <div className="list-heading">{t('Gruppen')}</div>
+            {groups.map((g) => (
+              <GroupRow key={g.id} group={g} devices={devices} />
+            ))}
+            <div className="list-heading">{t('Geräte')}</div>
+          </>
+        )}
+        <div role="listbox" aria-label={t('Geräte')}>
+          {devices.map((d, i) => (
+            <DeviceRow
+              key={d.id}
+              device={d}
+              index={i}
+              active={d.id === selectedId}
+              onSelect={onSelect}
+              onEdit={onEdit}
+              onMove={move}
+            />
+          ))}
+          {devices.length === 0 && <p className="sidebar-empty">{t('Noch keine Geräte.')}</p>}
+        </div>
       </div>
       <UpdateNotice />
       <div className="sidebar-foot">

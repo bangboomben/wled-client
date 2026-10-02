@@ -364,4 +364,8 @@ export const EN: Record<string, string> = {
   'Eine Gruppe „{name}“ gibt es schon.': 'A group named “{name}” already exists.',
   'Gruppe nicht gefunden': 'Group not found',
   'Bitte mindestens ein Gerät auswählen.': 'Please select at least one device.',
+  'Gruppen': 'Groups',
+  'Keine Geräte': 'No devices',
+  'Gruppe {name} ein- oder ausschalten': 'Turn group {name} on or off',
+  'Helligkeit Gruppe {name}': 'Brightness of group {name}',
 };
