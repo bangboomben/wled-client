@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { brightnessBase, groupMembers, groupView, powerTargets, scaleBrightness, type BriTarget } from '../../shared/groups';
+import { useEffect, useRef, type PointerEvent } from 'react';
+import { brightnessBase, groupMembers, groupView, powerTargets, scaleBrightness, type BriTarget, type GroupView } from '../../shared/groups';
 import { t } from '../../shared/i18n';
 import type { DeviceGroup, DeviceSnapshot } from '../../shared/types';
 import { send } from '../lib/store';
@@ -14,12 +14,16 @@ function memberText(members: DeviceSnapshot[]): string {
   return members.map((d) => (d.status === 'offline' ? t('{name} (offline)', { name: d.name }) : d.name)).join(', ');
 }
 
-/** Eine Gruppe: Ein/Aus und anteilige Helligkeit für alle Mitglieder — in Seitenleiste und Tray-Fenster. */
-export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devices: DeviceSnapshot[]; onEdit?: (id: string) => void }) {
-  const members = groupMembers(group, devices);
+/** Ein/Aus und anteilige Helligkeit einer Gruppe — gemeinsam für Gruppenzeile und Gruppenansicht. */
+export function useGroupControls(members: DeviceSnapshot[]): {
+  view: GroupView;
+  usable: boolean;
+  setPower: (on: boolean) => void;
+  setBrightness: (v: number) => void;
+  endGesture: () => void;
+  onPointerDownCapture: (e: PointerEvent) => void;
+} {
   const view = groupView(members);
-  const usable = view.reachable > 0;
-  const memberLine = memberText(members);
   // Stand bei Zugbeginn: Zieht man im selben Zug wieder hoch, kommen die Verhältnisse zurück.
   const base = useRef<BriTarget[] | null>(null);
   const idle = useRef<number | undefined>(undefined);
@@ -45,9 +49,26 @@ export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devic
     for (const id of powerTargets(members)) send(id, { on });
   };
 
+  // Capture-Phase am umgebenden Element: Der Regler hält pointerdown selbst an.
+  const onPointerDownCapture = (e: PointerEvent) => {
+    // Nur ein Druck auf den Regler selbst startet einen Mauszug (sonst käme nie ein onCommit).
+    if (!(e.target instanceof HTMLInputElement)) return;
+    window.clearTimeout(idle.current);
+    dragging.current = true;
+  };
+
+  return { view, usable: view.reachable > 0, setPower, setBrightness, endGesture, onPointerDownCapture };
+}
+
+/** Eine Gruppe: Ein/Aus und anteilige Helligkeit für alle Mitglieder — in Seitenleiste und Tray-Fenster. */
+export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devices: DeviceSnapshot[]; onEdit?: (id: string) => void }) {
+  const members = groupMembers(group, devices);
+  const c = useGroupControls(members);
+  const memberLine = memberText(members);
+
   return (
     <div
-      className={`group-row${usable ? '' : ' offline'}`}
+      className={`group-row${c.usable ? '' : ' offline'}`}
       onContextMenu={
         onEdit
           ? (e) => {
@@ -64,26 +85,18 @@ export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devic
           {memberLine}
         </div>
       </div>
-      <Toggle checked={view.lit} disabled={!usable} label={t('Gruppe {name} ein- oder ausschalten', { name: group.name })} onChange={setPower} />
+      <Toggle checked={c.view.lit} disabled={!c.usable} label={t('Gruppe {name} ein- oder ausschalten', { name: group.name })} onChange={c.setPower} />
       {/* Capture-Phase: Der Regler hält pointerdown selbst an. */}
-      <div
-        className="row-slider"
-        onPointerDownCapture={(e) => {
-          // Nur ein Druck auf den Regler selbst startet einen Mauszug (sonst käme nie ein onCommit).
-          if (!(e.target instanceof HTMLInputElement)) return;
-          window.clearTimeout(idle.current);
-          dragging.current = true;
-        }}
-      >
+      <div className="row-slider" onPointerDownCapture={c.onPointerDownCapture}>
         <Slider
           variant="mini"
-          value={view.bri}
+          value={c.view.bri}
           min={1}
-          disabled={!usable}
-          fillColor={view.lit ? undefined : 'var(--muted)'}
+          disabled={!c.usable}
+          fillColor={c.view.lit ? undefined : 'var(--muted)'}
           label={t('Helligkeit Gruppe {name}', { name: group.name })}
-          onChange={setBrightness}
-          onCommit={endGesture}
+          onChange={c.setBrightness}
+          onCommit={c.endGesture}
         />
       </div>
     </div>
