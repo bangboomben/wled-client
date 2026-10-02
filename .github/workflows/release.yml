@@ -1,0 +1,116 @@
+# Baut und testet jeden Pull Request. Ein Tag v* erzeugt das Release:
+#   build   – Installer bauen (unsigniert) und als Artefakt ablegen
+#   sign    – nur wenn SignPath eingerichtet ist (Repository-Variable SIGNPATH_ORGANIZATION_ID):
+#             Signieranfrage stellen, auf die Freigabe warten, latest.yml/Blockmap nachziehen
+#   publish – GitHub-Release mit Installer, Blockmap und latest.yml (für den Auto-Updater)
+# SignPath signiert nur Artefakte, die auf GitHub-gehosteten Runnern gebaut wurden.
+
+name: Build & Release
+
+on:
+  pull_request:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run i18n
+      - name: Build installer
+        run: npm run dist
+      - name: End-to-end tests (simulated devices, packaged app)
+        run: node scripts/e2e.mjs --exe "release/win-unpacked/WLED Client.exe"
+      - name: Upload unsigned installer
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+
+  sign:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Sign installer (SignPath, waits for manual approval)
+        # v3, an den Commit gebunden — eine fremde Action mit Zugriff auf das Signier-Token
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ needs.build.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 21600
+          output-artifact-directory: release
+      - name: Update latest.yml and blockmap for the signed installer
+        run: node scripts/update-feed.mjs release
+      - name: Verify signature
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem release/*.exe) {
+            $s = Get-AuthenticodeSignature $f.FullName
+            "{0}: {1} ({2})" -f $f.Name, $s.Status, $s.SignerCertificate.Subject
+            if ($s.Status -ne 'Valid') { throw "Signatur ungültig: $($f.Name)" }
+          }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: signed
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+
+  publish:
+    needs: [build, sign]
+    if: >-
+      always() && startsWith(github.ref, 'refs/tags/v') &&
+      needs.build.result == 'success' &&
+      (needs.sign.result == 'success' || needs.sign.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.sign.result == 'success' && 'signed' || 'unsigned' }}
+          path: release
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes="release-notes/${TAG}.md"
+          if [ -f "$notes" ]; then args=(--notes-file "$notes"); else args=(--generate-notes); fi
+          gh release create "$TAG" release/*.exe release/*.blockmap release/latest.yml \
+            --title "WLED Client ${TAG#v}" "${args[@]}"

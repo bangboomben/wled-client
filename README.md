@@ -59,7 +59,8 @@ power and brightness of all lights from the Windows tray without opening anythin
 1. Download **`WLED-Client-Setup-x.y.z.exe`** from the [latest release](https://github.com/bangboomben/wled-client/releases/latest).
 2. Run it. It installs per user — no admin rights needed — and adds Start menu and desktop shortcuts.
 3. The installer is not code-signed yet, so Windows SmartScreen may warn about an unknown publisher:
-   click **More info → Run anyway**.
+   click **More info → Run anyway**. Free code signing through the SignPath Foundation is in progress —
+   see the [code signing policy](CODE_SIGNING.md).
 
 On first start the app scans your local network (/24) and adds every WLED device it finds.
 Devices on other subnets: **+ Gerät** (add device) → enter the IP, or add the subnet to the scan (e.g. `192.168.2.0/24`).
@@ -106,6 +107,14 @@ npm run build        # dist-electron/ (main, preload) + dist/renderer/ (UI)
 npm run dist         # build + Windows installer into release/
 ```
 
+### Releases
+
+Push a version tag (`git tag v1.3.0 && git push --tags`). The [Build & Release workflow](.github/workflows/release.yml)
+builds and tests the installer on GitHub, has it signed through SignPath once that is set up (each signing request
+needs a manual approval), refreshes `latest.yml` and the blockmap for the signed file
+(`scripts/update-feed.mjs`) and publishes the release. Release notes come from `release-notes/<tag>.md` if it exists.
+Pull requests run the same build and tests without publishing.
+
 ### Architecture
 
 ```
@@ -146,7 +155,8 @@ Installation ohne Administratorrechte. Die Oberfläche spricht Deutsch und Engli
 
 ## License & credits
 
-Licensed under the [EUPL-1.2](LICENSE), the same license as WLED.
+Licensed under the [EUPL-1.2](LICENSE), the same license as WLED. [Privacy policy](PRIVACY.md) ·
+[Code signing policy](CODE_SIGNING.md)
 
 [WLED](https://github.com/wled/WLED) is created by Aircoookie and maintained by the WLED community — this client
 just talks to it. The test fixtures in `mock/fixtures/` are recorded API responses of WLED (effect names,
