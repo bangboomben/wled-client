@@ -4,7 +4,7 @@
 // Hauptwege durch und prüft, was beim Gerät ankommt.
 
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright-core';
@@ -435,6 +435,30 @@ try {
     }, 'beide an mit 100 und 50');
   });
 
+  await step('Gruppe anlegen, doppelter Name, umbenennen, löschen', async () => {
+    const saved = () => JSON.parse(readFileSync(path.join(userData, 'groups.json'), 'utf8'));
+    await win.click('.sidebar-foot .btn:has-text("Gruppe")');
+    await win.fill('.modal .group-name input', 'e2e gruppe');
+    await win.click('.modal .check:has-text("Mock Desk")');
+    await win.click('.modal .btn.primary');
+    await win.waitForFunction(() => document.querySelector('.modal .error')?.textContent?.includes('gibt es schon'));
+    await win.fill('.modal .group-name input', 'Schreibtisch');
+    await win.click('.modal .btn.primary');
+    await win.waitForSelector('.modal', { state: 'detached' });
+    await win.waitForSelector('.group-row:has-text("Schreibtisch")');
+    await waitFor(() => saved().some((g) => g.name === 'Schreibtisch' && g.members.join() === 'dev-desk'), 'groups.json mit neuer Gruppe');
+    await win.click('.group-row:has-text("Schreibtisch")', { button: 'right' });
+    await win.fill('.modal .group-name input', 'Arbeitsplatz');
+    await win.click('.modal .btn.primary');
+    await win.waitForSelector('.group-row:has-text("Arbeitsplatz")');
+    await waitFor(() => saved().some((g) => g.name === 'Arbeitsplatz'), 'groups.json umbenannt');
+    win.once('dialog', (d) => d.accept());
+    await win.click('.group-row:has-text("Arbeitsplatz")', { button: 'right' });
+    await win.click('.modal .btn.danger');
+    await win.waitForSelector('.group-row:has-text("Arbeitsplatz")', { state: 'detached' });
+    await waitFor(() => saved().length === 1 && saved()[0].name === 'E2E Gruppe', 'groups.json nach dem Löschen');
+  });
+
   await step('Dialog sucht beim Öffnen per mDNS', async () => {
     await win.click('.sidebar-foot .btn:has-text("Gerät")');
     await win.waitForFunction(() => document.querySelectorAll('.scan-row').length === 3, null, { timeout: 8000 });
@@ -462,6 +486,27 @@ try {
     await win.keyboard.press('Escape');
   });
 
+  await step('Entferntes Gerät fällt aus der Gruppe', async () => {
+    const saved = () => JSON.parse(readFileSync(path.join(userData, 'groups.json'), 'utf8'));
+    await win.click('.sidebar-foot .btn:has-text("Gruppe")');
+    await win.fill('.modal .group-name input', 'Mit Extra');
+    await win.click('.modal .check:has-text("Mock Desk")');
+    await win.click('.modal .check:has-text("Mock Extra")');
+    await win.click('.modal .btn.primary');
+    await win.waitForSelector('.group-row:has-text("Mit Extra")');
+    win.once('dialog', (d) => d.accept());
+    await win.click('.device-row:has-text("Mock Extra")', { button: 'right' });
+    await win.click('.modal .btn.danger');
+    await win.waitForFunction(() => document.querySelectorAll('.device-row').length === 2, null, { timeout: 6000 });
+    const members = await win.locator('.group-row:has-text("Mit Extra") .device-sub').textContent();
+    expect(members === 'Mock Desk', `Mitglieder nach dem Entfernen: ${members}`);
+    await waitFor(() => saved().some((g) => g.name === 'Mit Extra' && g.members.join() === 'dev-desk'), 'groups.json ohne Extra');
+    win.once('dialog', (d) => d.accept());
+    await win.click('.group-row:has-text("Mit Extra")', { button: 'right' });
+    await win.click('.modal .btn.danger');
+    await win.waitForSelector('.group-row:has-text("Mit Extra")', { state: 'detached' });
+  });
+
   await step('Nachtlicht-Popover', async () => {
     await win.keyboard.press('Control+1');
     await win.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
@@ -482,12 +527,12 @@ try {
   });
 
   await step('Sprachwechsel auf Englisch und zurück', async () => {
-    await win.click('.sidebar-foot .icon-btn');
+    await win.click('.sidebar-foot .settings-btn');
     await win.click('.modal .seg-switch button:has-text("English")');
     await win.waitForFunction(() => document.querySelector('.tab[data-tab="colors"]')?.textContent?.includes('Colors'));
     await fly.waitForFunction(() => /All (on|off)/.test(document.querySelector('.flyout-head .btn')?.textContent ?? ''));
     await win.screenshot({ path: path.join(SHOTS, '14-english.png') });
-    await win.click('.sidebar-foot .icon-btn');
+    await win.click('.sidebar-foot .settings-btn');
     await win.click('.modal .seg-switch button:has-text("Deutsch")');
     await win.waitForFunction(() => document.querySelector('.tab[data-tab="colors"]')?.textContent?.includes('Farben'));
     await win.keyboard.press('Escape');

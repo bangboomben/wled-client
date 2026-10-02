@@ -368,4 +368,9 @@ export const EN: Record<string, string> = {
   'Keine Geräte': 'No devices',
   'Gruppe {name} ein- oder ausschalten': 'Turn group {name} on or off',
   'Helligkeit Gruppe {name}': 'Brightness of group {name}',
+  'Gruppe': 'Group',
+  'Gruppe anlegen': 'New group',
+  'Gruppe bearbeiten': 'Edit group',
+  'Geräte in dieser Gruppe': 'Devices in this group',
+  'Gruppe „{name}“ löschen? Die Lampen bleiben, wie sie sind.': 'Delete group “{name}”? The lights stay as they are.',
 };

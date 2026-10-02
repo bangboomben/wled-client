@@ -154,16 +154,20 @@ export function Sidebar({
   selectedId,
   onSelect,
   onAdd,
+  onAddGroup,
   onSettings,
   onEdit,
+  onEditGroup,
 }: {
   devices: DeviceSnapshot[];
   groups: DeviceGroup[];
   selectedId?: string;
   onSelect: (id: string) => void;
   onAdd: () => void;
+  onAddGroup: () => void;
   onSettings: () => void;
   onEdit: (id: string) => void;
+  onEditGroup: (id: string) => void;
 }) {
   const anyOn = devices.some((d) => d.status === 'online' && d.state?.on);
 
@@ -187,7 +191,7 @@ export function Sidebar({
           <>
             <div className="list-heading">{t('Gruppen')}</div>
             {groups.map((g) => (
-              <GroupRow key={g.id} group={g} devices={devices} />
+              <GroupRow key={g.id} group={g} devices={devices} onEdit={onEditGroup} />
             ))}
             <div className="list-heading">{t('Geräte')}</div>
           </>
@@ -213,12 +217,22 @@ export function Sidebar({
           <Icon name="plus" size={16} />
           {t('Gerät')}
         </button>
-        <button className="btn ghost" disabled={!devices.length} onClick={() => sendAll({ on: !anyOn })}>
-          <Icon name="power" size={16} />
-          {anyOn ? t('Alle aus') : t('Alle an')}
+        <button className="btn ghost" onClick={onAddGroup}>
+          <Icon name="plus" size={16} />
+          {t('Gruppe')}
         </button>
         <span className="spacer" />
-        <button className="icon-btn" onClick={onSettings} aria-label={t('App-Einstellungen')} title={t('App-Einstellungen')}>
+        {/* Als Symbol: Mit Text passen die drei Knöpfe auf Deutsch nicht in die Leiste. */}
+        <button
+          className="icon-btn"
+          disabled={!devices.length}
+          onClick={() => sendAll({ on: !anyOn })}
+          aria-label={anyOn ? t('Alle aus') : t('Alle an')}
+          title={anyOn ? t('Alle aus') : t('Alle an')}
+        >
+          <Icon name="power" />
+        </button>
+        <button className="icon-btn settings-btn" onClick={onSettings} aria-label={t('App-Einstellungen')} title={t('App-Einstellungen')}>
           <Icon name="gear" />
         </button>
       </div>

@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { GROUP_NAME_MAX } from '../../shared/groups';
 import { key, t } from '../../shared/i18n';
-import type { DeviceSnapshot, LanguageSetting, ThemeMode, UpdateState } from '../../shared/types';
+import type { DeviceGroup, DeviceSnapshot, LanguageSetting, ThemeMode, UpdateState } from '../../shared/types';
 import { store, useDevices, useScan, useSettings, useUpdate, wled } from '../lib/store';
 import { formatUptime } from '../lib/wled';
-import { Modal, Toggle, toast } from './controls';
+import { Check, Modal, Toggle, toast } from './controls';
 import { Icon } from './Icon';
 
 // ------------------------------------------------------------------ Gerät hinzufügen
@@ -217,6 +218,87 @@ export function DeviceEditDialog({ device, onClose }: { device: DeviceSnapshot; 
         <span>{t('Adresse')}</span>
         <input value={host} spellCheck={false} onChange={(e) => setHost(e.target.value)} />
       </label>
+      {error && <p className="error">{error}</p>}
+    </Modal>
+  );
+}
+
+// ------------------------------------------------------------------ Gruppe anlegen/bearbeiten
+
+export function GroupDialog({ group, devices, onClose }: { group?: DeviceGroup; devices: DeviceSnapshot[]; onClose: () => void }) {
+  const [name, setName] = useState(group?.name ?? '');
+  const [members, setMembers] = useState<string[]>(group?.members ?? []);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const toggleMember = (id: string, on: boolean) => {
+    setMembers((m) => (on ? [...m, id] : m.filter((x) => x !== id)));
+    setError('');
+  };
+
+  const save = async () => {
+    setBusy(true);
+    const input = { name, members };
+    const r = group ? await wled.updateGroup(group.id, input) : await wled.createGroup(input);
+    setBusy(false);
+    if (!r.ok) return setError(r.error ?? t('Speichern fehlgeschlagen'));
+    onClose();
+  };
+
+  const remove = async () => {
+    if (!group || !window.confirm(t('Gruppe „{name}“ löschen? Die Lampen bleiben, wie sie sind.', { name: group.name }))) return;
+    await wled.removeGroup(group.id);
+    onClose();
+  };
+
+  return (
+    <Modal
+      title={group ? t('Gruppe bearbeiten') : t('Gruppe anlegen')}
+      onClose={onClose}
+      width={480}
+      footer={
+        <>
+          {group && (
+            <button className="btn danger" onClick={remove}>
+              <Icon name="trash" size={15} />
+              {t('Löschen')}
+            </button>
+          )}
+          <span className="spacer" />
+          <button className="btn ghost" onClick={onClose}>
+            {t('Abbrechen')}
+          </button>
+          <button className="btn primary" disabled={busy} onClick={save}>
+            {t('Speichern')}
+          </button>
+        </>
+      }
+    >
+      <label className="field group-name">
+        <span>{t('Name')}</span>
+        <input
+          value={name}
+          autoFocus
+          maxLength={GROUP_NAME_MAX}
+          onChange={(e) => {
+            setName(e.target.value);
+            setError('');
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void save();
+          }}
+        />
+      </label>
+      <div className="field">
+        <span>{t('Geräte in dieser Gruppe')}</span>
+        <div className="check-list">
+          {devices.map((d) => (
+            <Check key={d.id} checked={members.includes(d.id)} onChange={(on) => toggleMember(d.id, on)}>
+              {d.name}
+            </Check>
+          ))}
+        </div>
+      </div>
       {error && <p className="error">{error}</p>}
     </Modal>
   );
