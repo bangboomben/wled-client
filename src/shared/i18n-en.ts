@@ -282,6 +282,7 @@ export const EN: Record<string, string> = {
   'Unter {host} antwortet kein WLED-Gerät.': 'No WLED device responds at {host}.',
   'Gerät nicht gefunden': 'Device not found',
   'Adresse fehlt': 'Address missing',
+  'Übertragen fehlgeschlagen': 'Copying failed',
 
   // Info
   'Gerätename': 'Device name',

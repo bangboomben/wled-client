@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { t } from '../shared/i18n';
+import { lookPatch, type CopyResult, type Look } from '../shared/look';
 import type { CommandResult, DeviceConfig, DeviceSnapshot } from '../shared/types';
 import { DeviceConnection, normalizeHost, probeInfo } from './device';
 import type { Store } from './store';
@@ -155,6 +156,21 @@ export class DeviceManager extends EventEmitter {
     for (const conn of this.all()) {
       if (conn.status === 'online') void this.send(conn.id, patch);
     }
+  }
+
+  /** Look auf Geräte übertragen: je Gerät ein Befehl mit Bestätigung, Ergebnis je Gerät. */
+  copyLook(look: Look, ids: string[]): Promise<CopyResult[]> {
+    return Promise.all(
+      ids.map(async (id): Promise<CopyResult> => {
+        const conn = this.conns.get(id);
+        if (!conn) return { id, ok: false, reason: t('Gerät nicht gefunden') };
+        if (conn.status !== 'online' || !conn.state) return { id, ok: false, reason: t('Offline') };
+        const r = lookPatch(look, conn.state, conn.staticData);
+        if ('reason' in r) return { id, ok: false, reason: r.reason };
+        const sent = await this.send(id, r.patch, undefined, true);
+        return sent.ok ? { id, ok: true } : { id, ok: false, reason: sent.error ?? t('Übertragen fehlgeschlagen') };
+      }),
+    );
   }
 
   setLive(id: string | null): void {
