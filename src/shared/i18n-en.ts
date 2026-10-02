@@ -372,5 +372,15 @@ export const EN: Record<string, string> = {
   'Gruppe anlegen': 'New group',
   'Gruppe bearbeiten': 'Edit group',
   'Geräte in dieser Gruppe': 'Devices in this group',
-  'Gruppe „{name}“ löschen? Die Lampen bleiben, wie sie sind.': 'Delete group “{name}”? The lights stay as they are.',
+  'Gruppe „{name}” löschen? Die Lampen bleiben, wie sie sind.': 'Delete group “{name}”? The lights stay as they are.',
+
+  // Copy Look
+  'Effektliste noch nicht geladen': 'Effect list not loaded yet',
+  'Eigene Paletten lassen sich nicht übertragen': 'Custom palettes can’t be copied',
+  'Effekt „{name}” gibt es dort nicht': 'No effect “{name}” there',
+  'Palette „{name}” gibt es dort nicht': 'No palette “{name}” there',
+  'Look nicht übertragen': 'Look not copied',
+  'Look auf 1 Gerät übertragen': 'Look copied to 1 device',
+  'Look auf {n} Geräte übertragen': 'Look copied to {n} devices',
+  '{name}: {reason}': '{name}: {reason}',
 };

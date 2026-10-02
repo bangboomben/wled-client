@@ -247,7 +247,7 @@ export function GroupDialog({ group, devices, onClose }: { group?: DeviceGroup; 
   };
 
   const remove = async () => {
-    if (!group || !window.confirm(t('Gruppe „{name}“ löschen? Die Lampen bleiben, wie sie sind.', { name: group.name }))) return;
+    if (!group || !window.confirm(t('Gruppe „{name}” löschen? Die Lampen bleiben, wie sie sind.', { name: group.name }))) return;
     await wled.removeGroup(group.id);
     onClose();
   };

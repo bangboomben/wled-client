@@ -2,7 +2,8 @@
 // Effekt und Palette laufen beim Namen, weil sich die Nummern zwischen Firmware-Ständen unterscheiden.
 // Ohne Electron, damit Oberfläche und Hauptprozess dieselbe Rechnung nutzen und sie testbar bleibt.
 
-import type { Color, DeviceStatic, WledSegment } from './types';
+import { t } from './i18n';
+import type { Color, DeviceGroup, DeviceSnapshot, DeviceStatic, WledSegment, WledState } from './types';
 
 export interface Look {
   fx: string;
@@ -85,4 +86,44 @@ export function cleanLook(raw: unknown): Look | null {
     o2: r.o2 as boolean,
     o3: r.o3 as boolean,
   };
+}
+
+/**
+ * Befehl, der den Look auf alle Segmente eines Ziels setzt — oder der Grund, warum das Ziel unverändert
+ * bleibt. Kein halber Look: Fehlt Effekt oder Palette, wird gar nichts gesendet.
+ */
+export function lookPatch(look: Look, state: WledState, st: DeviceStatic | null): { patch: Record<string, unknown> } | { reason: string } {
+  if (!st) return { reason: t('Effektliste noch nicht geladen') };
+  if (look.pal === null) return { reason: t('Eigene Paletten lassen sich nicht übertragen') };
+  const fx = st.effects.indexOf(look.fx);
+  if (fx < 0) return { reason: t('Effekt „{name}” gibt es dort nicht', { name: look.fx }) };
+  const pal = st.palettes.indexOf(look.pal);
+  if (pal < 0) return { reason: t('Palette „{name}” gibt es dort nicht', { name: look.pal }) };
+  const { sx, ix, c1, c2, c3, o1, o2, o3 } = look;
+  return {
+    patch: {
+      seg: state.seg.map((s) => ({ id: s.id, fx, pal, sx, ix, c1, c2, c3, o1, o2, o3, col: look.col.map((c) => [...c]) })),
+    },
+  };
+}
+
+/** Gewählte Geräte plus Mitglieder gewählter Gruppen — einmal je Gerät, ohne Quelle, nur mit Verbindung. */
+export function copyTargets(
+  pick: { devices: string[]; groups: string[] },
+  groups: DeviceGroup[],
+  devices: DeviceSnapshot[],
+  sourceId: string,
+): string[] {
+  const wanted = new Set(pick.devices);
+  for (const g of groups) if (pick.groups.includes(g.id)) for (const m of g.members) wanted.add(m);
+  return devices.filter((d) => wanted.has(d.id) && d.id !== sourceId && d.status === 'online').map((d) => d.id);
+}
+
+/** Ein Hinweis für alle Ergebnisse: Anzahl der Erfolge, dann je übersprungenem Ziel der Grund. */
+export function copySummary(results: CopyResult[], nameOf: (id: string) => string): string {
+  const ok = results.filter((r) => r.ok).length;
+  const head =
+    ok === 0 ? t('Look nicht übertragen') : ok === 1 ? t('Look auf 1 Gerät übertragen') : t('Look auf {n} Geräte übertragen', { n: ok });
+  const fails = results.filter((r) => !r.ok).map((r) => t('{name}: {reason}', { name: nameOf(r.id), reason: r.reason ?? '' }));
+  return [head, ...fails].join(' · ');
 }
