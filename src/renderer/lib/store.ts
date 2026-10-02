@@ -161,7 +161,8 @@ export function usePalx(device: DeviceSnapshot | undefined, enabled: boolean): R
       cancelled = true;
     };
   }, [id, rev, enabled]);
-  return cached?.rev === rev ? cached.data : (cached?.data ?? null);
+  // Während neu geladen wird, bleiben die bisherigen Daten sichtbar.
+  return cached?.data ?? null;
 }
 
 export function readLocal<T>(key: string, fallback: T): T {

@@ -12,6 +12,29 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoUpdate: true,
 };
 
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+function cleanDevice(raw: unknown): DeviceConfig | null {
+  if (!isObj(raw) || typeof raw.id !== 'string' || !raw.id || typeof raw.host !== 'string' || !raw.host) return null;
+  const device: DeviceConfig = { id: raw.id, host: raw.host };
+  for (const k of ['mac', 'alias', 'lastName'] as const) if (typeof raw[k] === 'string') device[k] = raw[k];
+  return device;
+}
+
+/** Nur bekannte Einstellungen mit gültigem Wert — für Dateien von der Platte und Änderungen aus der Oberfläche. */
+export function cleanSettings(raw: unknown): Partial<AppSettings> {
+  const out: Partial<AppSettings> = {};
+  if (!isObj(raw)) return out;
+  for (const k of ['closeToTray', 'startWithWindows', 'liveView', 'autoUpdate', 'trayHintShown'] as const) {
+    const v = raw[k];
+    if (typeof v === 'boolean') out[k] = v;
+  }
+  if (raw.theme === 'system' || raw.theme === 'dark' || raw.theme === 'light') out.theme = raw.theme;
+  if (raw.language === 'system' || raw.language === 'de' || raw.language === 'en') out.language = raw.language;
+  if (typeof raw.selectedId === 'string') out.selectedId = raw.selectedId;
+  return out;
+}
+
 function readJson<T>(file: string, fallback: T): T {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8')) as T;
@@ -41,8 +64,16 @@ export class Store {
     this.devicesFile = path.join(dir, 'devices.json');
     this.settingsFile = path.join(dir, 'settings.json');
     this.firstRun = !fs.existsSync(this.devicesFile);
-    this.devices = readJson<DeviceConfig[]>(this.devicesFile, []).filter((d) => d && d.id && d.host);
-    this.settings = { ...DEFAULT_SETTINGS, ...readJson<Partial<AppSettings>>(this.settingsFile, {}) };
+    // Von Hand bearbeitete oder beschädigte Dateien: Unbrauchbares fällt weg, statt den Start zu verhindern.
+    const devices = readJson<unknown>(this.devicesFile, []);
+    const ids = new Set<string>();
+    this.devices = (Array.isArray(devices) ? devices : []).flatMap((raw) => {
+      const d = cleanDevice(raw);
+      if (!d || ids.has(d.id)) return [];
+      ids.add(d.id);
+      return [d];
+    });
+    this.settings = { ...DEFAULT_SETTINGS, ...cleanSettings(readJson<unknown>(this.settingsFile, {})) };
   }
 
   getDevices(): DeviceConfig[] {

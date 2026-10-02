@@ -33,6 +33,14 @@ const mock = spawn(
   ],
   { stdio: ['ignore', 'pipe', 'inherit'] },
 );
+// Kein Schritt darf den Lauf unbegrenzt aufhalten (etwa ein Fenster, das sich nicht schließen lässt).
+const WATCHDOG_MS = 8 * 60_000;
+const watchdog = setTimeout(() => {
+  console.log(`\nAbbruch: Test läuft länger als ${WATCHDOG_MS / 60_000} min`);
+  mock.kill();
+  process.exit(2);
+}, WATCHDOG_MS);
+
 await new Promise((resolve) => mock.stdout.on('data', (d) => d.toString().includes(String(PORTS.extra)) && resolve()));
 
 const api = async (port, p, body) => {
@@ -54,13 +62,34 @@ writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dar
 
 let failures = 0;
 const results = [];
+/** Jedes Ergebnis sofort ausgeben — bleibt ein Lauf hängen, zeigt das Protokoll, wo. */
+const report = (line) => {
+  results.push(line);
+  console.log(line);
+};
 async function step(name, fn) {
   try {
     await fn();
-    results.push(`  ok   ${name}`);
+    report(`  ok   ${name}`);
   } catch (err) {
     failures++;
-    results.push(`  FAIL ${name}\n       ${String(err?.message ?? err).split('\n')[0]}`);
+    report(`  FAIL ${name}\n       ${String(err?.message ?? err).split('\n')[0]}`);
+  }
+}
+
+/** Beendet die App; reagiert sie nicht, wird der Prozess hart beendet. */
+async function closeApp(electronApp) {
+  const proc = electronApp.process();
+  const closed = await Promise.race([
+    electronApp.close().then(
+      () => true,
+      () => false,
+    ),
+    new Promise((r) => setTimeout(() => r(false), 15_000)),
+  ]);
+  if (!closed) {
+    console.log('  App reagiert nicht auf Beenden, Prozess wird beendet');
+    proc.kill();
   }
 }
 const expect = (cond, msg) => {
@@ -76,8 +105,8 @@ const waitFor = async (fn, msg, timeout = 4000) => {
 };
 
 // mDNS-Anfragen gehen an den Mock statt ins Netzwerk
-const launch = (dataDir) =>
-  electron.launch({
+const launch = async (dataDir) => {
+  const electronApp = await electron.launch({
     ...(EXE ? { executablePath: path.resolve(EXE), args: [] } : { args: ['.'] }),
     env: {
       ...process.env,
@@ -86,8 +115,15 @@ const launch = (dataDir) =>
       WLED_CLIENT_MDNS_TARGET: `127.0.0.1:${MDNS_PORT}`,
     },
     colorScheme: 'dark',
+    timeout: 60_000,
   });
+  // Ausgaben des Hauptprozesses ins Protokoll (Fehler beim Start usw.)
+  electronApp.process().stderr?.on('data', (d) => process.stderr.write(`  [app] ${d}`));
+  return electronApp;
+};
+console.log('  Mock läuft, starte App …');
 const app = await launch(userData);
+console.log('  App gestartet');
 const consoleErrors = [];
 
 try {
@@ -188,6 +224,23 @@ try {
     win.once('dialog', (d) => d.accept());
     await win.click('.modal-foot .btn.danger');
     await win.waitForSelector('.preset-card:has-text("E2E Blau")', { state: 'detached', timeout: 5000 });
+  });
+
+  await step('Kaputte Presets reißen die Oberfläche nicht mit', async () => {
+    const good = await api(PORTS.desk, '/presets.json');
+    await api(PORTS.desk, '/__presets', {
+      ...good,
+      90: { n: 123, ql: 7, playlist: {} },
+      91: { n: { x: 1 }, playlist: { ps: 'kaputt' } },
+      92: 'kein Objekt',
+    });
+    await win.waitForFunction(() => [...document.querySelectorAll('.preset-name')].some((e) => e.textContent === '123'), null, {
+      timeout: 6000,
+    });
+    expect(!(await win.$('.error-boundary')), 'Fehleranzeige statt Presets');
+    const ids = await win.$$eval('.preset-card .muted', (els) => els.map((e) => e.textContent));
+    expect(ids.some((s) => s.startsWith('#91')) && !ids.some((s) => s.startsWith('#92')), `Presets: ${ids}`);
+    await api(PORTS.desk, '/__presets', good);
   });
 
   await step('Playlist anlegen', async () => {
@@ -332,7 +385,7 @@ try {
     lone.kill();
   });
 } finally {
-  await app.close().catch(() => {});
+  await closeApp(app);
   rmSync(userData, { recursive: true, force: true });
 }
 
@@ -347,13 +400,14 @@ await step('Erster Start übernimmt die Geräte aus der mDNS-Suche', async () =>
     const names = await w.$$eval('.device-row .device-name', (els) => els.map((e) => e.textContent).sort());
     expect(names.join('|') === 'Mock Bedroom|Mock Desk|Mock Extra', `Namen: ${names}`);
   } finally {
-    await first.close().catch(() => {});
+    await closeApp(first);
     rmSync(fresh, { recursive: true, force: true });
   }
 });
 mock.kill();
+clearTimeout(watchdog);
 
-console.log(results.join('\n'));
+console.log(`\n${results.join('\n')}`);
 if (consoleErrors.length) {
   console.log(`\nKonsolenfehler (${consoleErrors.length}):`);
   for (const e of [...new Set(consoleErrors)].slice(0, 10)) console.log('  ' + e);

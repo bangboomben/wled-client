@@ -19,6 +19,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 30
     outputs:
       artifact-id: ${{ steps.upload.outputs.artifact-id }}
     steps:
@@ -33,6 +34,7 @@ jobs:
       - name: Build installer
         run: npm run dist
       - name: End-to-end tests (simulated devices, packaged app)
+        timeout-minutes: 10
         run: node scripts/e2e.mjs --exe "release/win-unpacked/WLED Client.exe"
       - name: Upload unsigned installer
         id: upload

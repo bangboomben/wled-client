@@ -6,7 +6,8 @@
 // --mdns <port>: beantwortet mDNS-Anfragen nach _wled._tcp.local per Unicast auf 127.0.0.1:<port>
 // (die App fragt dort statt im Netzwerk, wenn WLED_CLIENT_MDNS_TARGET=127.0.0.1:<port> gesetzt ist).
 // Die Fixtures sind echte API-Antworten (WLED 16.0.1) ohne MAC, IP und WLAN-Daten.
-// Zusatzendpunkte für Tests: GET /__log (empfangene Befehle), POST /__reset.
+// Zusatzendpunkte für Tests: GET /__log (empfangene Befehle), POST /__reset,
+// POST /__presets (presets.json unverändert ersetzen, auch mit kaputten Einträgen).
 
 import dgram from 'node:dgram';
 import { readFileSync } from 'node:fs';
@@ -137,6 +138,12 @@ function createDevice(port, fixture, name) {
       req.on('end', () => {
         if (path === '/__reset') {
           reset();
+          broadcast();
+          return json(res, { ok: true });
+        }
+        if (path === '/__presets') {
+          presets = JSON.parse(body);
+          pmt++;
           broadcast();
           return json(res, { ok: true });
         }
