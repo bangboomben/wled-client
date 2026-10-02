@@ -23,9 +23,9 @@ function isPrivate(ip: string): boolean {
 }
 
 /** IPv4-Adressen der eigenen Netzwerkkarten (ohne virtuelle Adapter) mit Präfixlänge. */
-function localAddresses(): Array<{ address: string; prefix: number }> {
+function localAddresses(ifaces = os.networkInterfaces()): Array<{ address: string; prefix: number }> {
   const out: Array<{ address: string; prefix: number }> = [];
-  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+  for (const [name, addrs] of Object.entries(ifaces)) {
     if (VIRTUAL_ADAPTER.test(name)) continue;
     for (const a of addrs ?? []) {
       if (a.family !== 'IPv4' || a.internal) continue;
@@ -38,11 +38,12 @@ function localAddresses(): Array<{ address: string; prefix: number }> {
 /**
  * Die privaten Netze der eigenen Netzwerkkarten nach ihrer echten Netzmaske, als Vorschlag für
  * die Adresssuche. Netze größer als /22 werden auf das /22 um die eigene Adresse begrenzt;
- * Punkt-zu-Punkt-Verbindungen (/31, /32) haben nichts abzufragen.
+ * Punkt-zu-Punkt-Verbindungen (/31, /32) haben nichts abzufragen. `ifaces` ersetzt in Tests die
+ * echten Netzwerkkarten.
  */
-export function localSubnets(): string[] {
+export function localSubnets(ifaces = os.networkInterfaces()): string[] {
   const out = new Set<string>();
-  for (const { address, prefix } of localAddresses()) {
+  for (const { address, prefix } of localAddresses(ifaces)) {
     if (!isPrivate(address) || prefix > 30) continue;
     const p = Math.max(MIN_PREFIX, prefix);
     const mask = (~0 << (32 - p)) >>> 0;
