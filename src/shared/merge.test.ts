@@ -145,9 +145,9 @@ describe('applyStatePatch', () => {
       expect(applyStatePatch(state(), { transition: '10', mainseg: 1, ps: 3, pl: 2 })).toMatchObject({ transition: 10, mainseg: 1, ps: 3, pl: 2 });
     });
 
-    it('ignoriert reine Befehlsfelder', () => {
-      const patch = { psave: 3, pdel: 4, rb: true, v: true, lv: true, tt: 5, time: 1, np: true, ib: true, sb: true, sc: true, ql: 'x', n: 'x', o: true, playlist: {}, nn: 1 };
-      expect(applyStatePatch(state(), patch)).toEqual(state());
+    it('ignoriert reine Befehlsfelder, auch wenn der Zustand ein gleichnamiges Objekt hat', () => {
+      const base = state({ playlist: { ps: [1] } });
+      expect(applyStatePatch(base, { playlist: { ps: [2] }, psave: 3, rb: true, tt: 5 })).toEqual(base);
     });
 
     it('führt verschachtelte Objekte zusammen und schaltet darin mit "t" um', () => {

@@ -49,8 +49,15 @@ describe('cleanState', () => {
   });
 
   it('behält nur Segmente als Objekt und darin nur Farben als Liste', () => {
-    const state = cleanState({ seg: [null, 5, [1], { id: 0, col: [[1, 2, 3], 'x', [4, 5, 6]] }, { id: 1 }] });
+    const state = cleanState({ seg: [null, 5, [1], { id: 0, col: [[1, 2, 3], [4, 5, 6], 'x'] }, { id: 1 }] });
     expect(state?.seg).toEqual([{ id: 0, col: [[1, 2, 3], [4, 5, 6]] }, { id: 1, col: [] }]);
+  });
+
+  // Fund (2026-10-02, offen): Ein ungültiger Farbslot mitten in der Liste fällt weg, die folgenden
+  // Farben rücken eine Position vor. Die Firmware sendet immer Listen; über die Behebung wird noch entschieden.
+  it.fails('behält die Position der übrigen Farben, wenn ein Farbslot keine Liste ist', () => {
+    const state = cleanState({ seg: [{ id: 0, col: [[1, 2, 3], 'x', [4, 5, 6]] }] });
+    expect(state?.seg[0].col[2]).toEqual([4, 5, 6]);
   });
 
   it('ergänzt Nachtlicht und Sync und behält deren übrige Felder', () => {

@@ -14,7 +14,7 @@ const name = (n: string): Buffer => Buffer.concat([...n.split('.').map((l) => la
 const pointer = (offset: number): Buffer => Buffer.from([0xc0 | (offset >> 8), offset & 0xff]);
 const question = (n: string): Buffer => Buffer.concat([name(n), Buffer.from([0, TYPE.PTR, 0, 1])]);
 
-/** Eintrag: Name, Typ, Klasse (IN, mit Cache-Flush-Bit 0x8001), TTL 120 s, Daten. */
+/** Eintrag: Name, Typ, Klasse (Standard IN = 1; mDNS-Geräte setzen oft das Cache-Flush-Bit, 0x8001), TTL 120 s, Daten. */
 function record(owner: Buffer, type: number, data: Buffer, cls = 1): Buffer {
   const head = Buffer.alloc(10);
   head.writeUInt16BE(type, 0);
@@ -128,8 +128,17 @@ describe('parseResponse', () => {
   });
 
   it('schneidet TXT-Einträge ab, deren Länge über die Daten hinausgeht', () => {
-    const buf = packet({ answers: [record(name(INSTANCE), TYPE.TXT, Buffer.concat([Buffer.from([10]), Buffer.from('a=1')]))] });
-    expect(parseResponse(buf)).toEqual([{ type: 'TXT', name: INSTANCE, entries: ['a=1'] }]);
+    // Ein Eintrag dahinter: Ohne Begrenzung auf die eigenen Daten würde der Text in ihn hineinlesen.
+    const buf = packet({
+      answers: [
+        record(name(INSTANCE), TYPE.TXT, Buffer.concat([Buffer.from([10]), Buffer.from('a=1')])),
+        record(name(HOST), TYPE.A, Buffer.from([192, 0, 2, 10])),
+      ],
+    });
+    expect(parseResponse(buf)).toEqual([
+      { type: 'TXT', name: INSTANCE, entries: ['a=1'] },
+      { type: 'A', name: HOST, address: '192.0.2.10' },
+    ]);
   });
 
   it('gibt für Anfragen und zu kurze Pakete nichts zurück', () => {
