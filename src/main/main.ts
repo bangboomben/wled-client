@@ -15,9 +15,11 @@ import {
 } from 'electron';
 import path from 'node:path';
 import { key, resolveLanguage, setLanguage, t } from '../shared/i18n';
-import type { AppSettings, DevicePage, DeviceSnapshot, ScanResult, UpdateState } from '../shared/types';
+import { groupMembers, groupView, powerTargets } from '../shared/groups';
+import type { AppSettings, DeviceGroup, DevicePage, DeviceSnapshot, ScanResult, UpdateState } from '../shared/types';
 import { DeviceManager } from './devices';
 import { Scanner, localSubnets } from './discovery';
+import { GroupManager } from './groups';
 import { Store } from './store';
 import { cleanSettings } from './store-data';
 import { Updater } from './updater';
@@ -60,6 +62,7 @@ const PAGE_PATHS: Record<DevicePage, [string, string]> = {
 
 let store: Store;
 let manager: DeviceManager;
+let groups: GroupManager;
 let updater: Updater;
 const scanner = new Scanner();
 let mainWin: BrowserWindow | null = null;
@@ -234,14 +237,32 @@ function trayIcon(anyOn: boolean) {
   return nativeImage.createFromPath(path.join(RESOURCES, anyOn ? 'tray-on.ico' : 'tray-off.ico'));
 }
 
+/** Windows liest „&“ in Menütexten als Tastenkürzel-Markierung; „&&“ zeigt ein echtes „&“. */
+const menuLabel = (s: string) => s.replace(/&/g, '&&');
+
 function buildTrayMenu(): Menu {
   const devices = manager.list();
+  const groupItems = groups.list().map((g): MenuItemConstructorOptions => {
+    const members = groupMembers(g, devices);
+    const view = groupView(members);
+    return {
+      label: menuLabel(g.name),
+      type: 'checkbox',
+      checked: view.lit,
+      enabled: view.reachable > 0,
+      click: () => {
+        for (const id of powerTargets(members)) void manager.send(id, { on: !view.lit });
+      },
+    };
+  });
   const items: MenuItemConstructorOptions[] = [
     { label: t('WLED Client öffnen'), click: () => showMain() },
     { type: 'separator' },
+    ...groupItems,
+    ...(groupItems.length ? [{ type: 'separator' } as const] : []),
     ...devices.map(
       (d): MenuItemConstructorOptions => ({
-        label: d.status === 'online' ? d.name : t('{name} (offline)', { name: d.name }),
+        label: d.status === 'online' ? menuLabel(d.name) : t('{name} (offline)', { name: menuLabel(d.name) }),
         type: 'checkbox',
         checked: d.status === 'online' && !!d.state?.on,
         enabled: d.status === 'online',
@@ -423,6 +444,7 @@ const isPatch = (v: unknown): v is Record<string, unknown> => typeof v === 'obje
 function registerIpc(): void {
   ipcMain.handle('snapshot', () => ({
     devices: manager.list(),
+    groups: groups.list(),
     settings: store.getSettings(),
     version: app.getVersion(),
     update: updater.state,
@@ -455,6 +477,15 @@ function registerIpc(): void {
   });
   ipcMain.handle('reorder', (_e, ids: unknown) => {
     if (Array.isArray(ids)) manager.reorder(ids.filter(isId));
+  });
+  ipcMain.handle('group-create', (_e, input: unknown) =>
+    isPatch(input) ? groups.create({ name: input.name, members: input.members }) : { ok: false, error: t('Ungültig') },
+  );
+  ipcMain.handle('group-update', (_e, id: unknown, input: unknown) =>
+    isId(id) && isPatch(input) ? groups.update(id, { name: input.name, members: input.members }) : { ok: false, error: t('Ungültig') },
+  );
+  ipcMain.handle('group-remove', (_e, id: unknown) => {
+    if (isId(id)) groups.remove(id);
   });
   ipcMain.handle('subnets', () => localSubnets());
   ipcMain.handle('discover', async () => {
@@ -544,12 +575,16 @@ if (!app.requestSingleInstanceLock()) {
     nativeTheme.themeSource = store.getSettings().theme;
     nativeTheme.on('updated', applyTheme);
     manager = new DeviceManager(store);
+    groups = new GroupManager(store, () => manager.list().map((d) => d.id));
+    groups.on('groups', (list: DeviceGroup[]) => broadcast('groups', list));
     manager.on('device', (snap: DeviceSnapshot) => {
       broadcast('device', snap);
       updateTray();
     });
     manager.on('list', (list: DeviceSnapshot[]) => {
       broadcast('devices', list);
+      // Entfernte Geräte fallen aus allen Gruppen.
+      groups.pruneDevices(list.map((d) => d.id));
       updateTray();
     });
     manager.on('toast', (msg: string) => mainWin?.webContents.send('toast', msg));

@@ -137,6 +137,14 @@ export interface DeviceConfig {
   lastName?: string;
 }
 
+/** Frei zusammengestellte Gruppe; ein Gerät kann in mehreren Gruppen stecken. */
+export interface DeviceGroup {
+  id: string;
+  name: string;
+  /** Geräte-IDs, ohne Doppelte. */
+  members: string[];
+}
+
 export type DeviceStatus = 'connecting' | 'online' | 'offline';
 
 export interface DeviceSnapshot {
@@ -224,6 +232,7 @@ export interface UpdateState {
 
 export interface Snapshot {
   devices: DeviceSnapshot[];
+  groups: DeviceGroup[];
   settings: AppSettings;
   version: string;
   update: UpdateState;
@@ -245,6 +254,10 @@ export interface WledBridge {
   removeDevice(id: string): Promise<void>;
   updateDevice(id: string, changes: { alias?: string; host?: string }): Promise<CommandResult>;
   reorderDevices(ids: string[]): Promise<void>;
+  onGroups(cb: (groups: DeviceGroup[]) => void): () => void;
+  createGroup(group: { name: string; members: string[] }): Promise<CommandResult & { id?: string }>;
+  updateGroup(id: string, group: { name: string; members: string[] }): Promise<CommandResult>;
+  removeGroup(id: string): Promise<void>;
   localSubnets(): Promise<string[]>;
   /** Sucht Geräte, die sich im Netzwerk melden (mDNS, WLED-Knotenliste). */
   discover(): Promise<void>;

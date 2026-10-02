@@ -26,8 +26,11 @@
   --track: #2b303b;
   --thumb: #ffffff;
 
-  --accent: #f5a524;
-  --accent-contrast: #111318;
+  /* Grundfarbe der App; --accent selbst folgt per Skript dem gewählten Gerät (App.tsx). */
+  --app-accent: #f5a524;
+  --app-accent-contrast: #111318;
+  --accent: var(--app-accent);
+  --accent-contrast: var(--app-accent-contrast);
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   --accent-line: color-mix(in srgb, var(--accent) 55%, transparent);
 }
@@ -842,6 +845,35 @@ input:disabled {
 
 .dot.dead {
   background: var(--panel-3);
+}
+
+.list-heading {
+  padding: 10px 12px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Gruppen in der Grundfarbe der App: --accent am Wurzelelement folgt dem gewählten Gerät. */
+.group-row {
+  --accent: var(--app-accent);
+  --accent-contrast: var(--app-accent-contrast);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 10px 12px 8px;
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.group-row.offline .device-name {
+  color: var(--muted);
+}
+
+.group-icon {
+  color: var(--text-2);
 }
 
 .main {
@@ -1943,6 +1975,11 @@ body.is-flyout #root {
 
 .flyout-row:hover {
   background: var(--panel);
+}
+
+.flyout .group-row {
+  background: var(--panel);
+  margin-bottom: 6px;
 }
 
 .flyout-foot {

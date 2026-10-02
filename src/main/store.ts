@@ -1,8 +1,8 @@
 import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AppSettings, DeviceConfig } from '../shared/types';
-import { DEFAULT_SETTINGS, cleanDevices, cleanSettings } from './store-data';
+import type { AppSettings, DeviceConfig, DeviceGroup } from '../shared/types';
+import { DEFAULT_SETTINGS, cleanDevices, cleanGroups, cleanSettings } from './store-data';
 
 function readJson<T>(file: string, fallback: T): T {
   try {
@@ -23,8 +23,10 @@ function writeJsonAtomic(file: string, data: unknown): void {
 export class Store {
   private readonly devicesFile: string;
   private readonly settingsFile: string;
+  private readonly groupsFile: string;
   private devices: DeviceConfig[];
   private settings: AppSettings;
+  private groups: DeviceGroup[];
   private saveTimer: NodeJS.Timeout | null = null;
   readonly firstRun: boolean;
 
@@ -32,10 +34,13 @@ export class Store {
     const dir = app.getPath('userData');
     this.devicesFile = path.join(dir, 'devices.json');
     this.settingsFile = path.join(dir, 'settings.json');
+    this.groupsFile = path.join(dir, 'groups.json');
     this.firstRun = !fs.existsSync(this.devicesFile);
     // Von Hand bearbeitete oder beschädigte Dateien: Unbrauchbares fällt weg, statt den Start zu verhindern.
     this.devices = cleanDevices(readJson<unknown>(this.devicesFile, []));
     this.settings = { ...DEFAULT_SETTINGS, ...cleanSettings(readJson<unknown>(this.settingsFile, {})) };
+    // Mitglieder, die es als Gerät nicht (mehr) gibt, fallen schon beim Laden weg.
+    this.groups = cleanGroups(readJson<unknown>(this.groupsFile, []), this.devices.map((d) => d.id));
   }
 
   getDevices(): DeviceConfig[] {
@@ -44,6 +49,15 @@ export class Store {
 
   setDevices(devices: DeviceConfig[]): void {
     this.devices = devices.map((d) => ({ ...d }));
+    this.scheduleSave();
+  }
+
+  getGroups(): DeviceGroup[] {
+    return this.groups.map((g) => ({ ...g, members: [...g.members] }));
+  }
+
+  setGroups(groups: DeviceGroup[]): void {
+    this.groups = groups.map((g) => ({ ...g, members: [...g.members] }));
     this.scheduleSave();
   }
 
@@ -70,6 +84,7 @@ export class Store {
     try {
       writeJsonAtomic(this.devicesFile, this.devices);
       writeJsonAtomic(this.settingsFile, this.settings);
+      writeJsonAtomic(this.groupsFile, this.groups);
     } catch (err) {
       console.error('Speichern fehlgeschlagen', err);
     }

@@ -4,7 +4,7 @@
 // Hauptwege durch und prüft, was beim Gerät ankommt.
 
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { _electron as electron } from 'playwright-core';
@@ -59,6 +59,7 @@ writeFileSync(
   ]),
 );
 writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'de' }));
+writeFileSync(path.join(userData, 'groups.json'), JSON.stringify([{ id: 'grp-e2e', name: 'E2E Gruppe', members: ['dev-desk', 'dev-bedroom'] }]));
 
 let failures = 0;
 const results = [];
@@ -235,6 +236,8 @@ try {
       const c = (await state(PORTS.desk)).seg[0].col[0];
       return c[0] === 51 && c[1] === 102 && c[2] === 255 && c.length === 4;
     }, 'Farbe 3366ff');
+    // Das Hex-Feld behielte sonst den Fokus; der Klick auf den RGB-Knopf würde es beim Verlassen erneut senden.
+    await win.keyboard.press('Tab');
   });
 
   await step('RGB-Regler auf Abruf, Zustand bleibt gemerkt', async () => {
@@ -245,10 +248,17 @@ try {
     expect((await toggle.getAttribute('aria-expanded')) === 'false', 'Knopf meldet nicht „zugeklappt“');
     await toggle.click();
     await red.fill('10');
-    await waitFor(async () => {
-      const c = (await state(PORTS.desk)).seg[0].col[0];
-      return c[0] === 10 && c[1] === 102 && c[2] === 255 && c.length === 4;
-    }, 'Rot = 10, Grün/Blau/W unverändert');
+    try {
+      await waitFor(async () => {
+        const c = (await state(PORTS.desk)).seg[0].col[0];
+        return c[0] === 10 && c[1] === 102 && c[2] === 255 && c.length === 4;
+      }, 'Rot = 10, Grün/Blau/W unverändert');
+    } catch (err) {
+      // Bei einer Zeitüberschreitung festhalten, was das Gerät tatsächlich sah.
+      const seen = JSON.stringify((await state(PORTS.desk)).seg[0].col[0]);
+      const lastCmds = JSON.stringify((await logOf(PORTS.desk)).slice(-5));
+      throw new Error(`${err.message} (seg[0].col[0] = ${seen}; letzte 5 Befehle: ${lastCmds})`);
+    }
     // Tab-Wechsel und Neuladen der Oberfläche: Die Regler bleiben offen
     await win.click('.tab:has-text("Effekte")');
     await win.click('.tab:has-text("Farben")');
@@ -378,6 +388,86 @@ try {
     await win.waitForFunction(() => document.querySelector('.hero-pct')?.textContent?.includes('71'));
   });
 
+  await step('Gruppe in Seitenleiste und Tray, Schalter schaltet alle', async () => {
+    const row = win.locator('.group-row:has-text("E2E Gruppe")');
+    await row.waitFor({ timeout: 5000 });
+    await fly.locator('.group-row:has-text("E2E Gruppe")').waitFor({ timeout: 5000 });
+    const members = await row.locator('.device-sub').textContent();
+    expect(members === 'Mock Desk, Mock Bedroom', `Mitglieder: ${members}`);
+    await api(PORTS.desk, '/json/state', { on: true });
+    await api(PORTS.bedroom, '/json/state', { on: false });
+    await win.waitForFunction(() => document.querySelector('.group-row .toggle')?.getAttribute('aria-checked') === 'true');
+    await row.locator('.toggle').click();
+    await waitFor(async () => !(await state(PORTS.desk)).on && !(await state(PORTS.bedroom)).on, 'beide aus');
+    await row.locator('.toggle').click();
+    await waitFor(async () => (await state(PORTS.desk)).on && (await state(PORTS.bedroom)).on, 'beide an');
+  });
+
+  await step('Gruppenregler dimmt anteilig, auch per Tastatur', async () => {
+    const slider = win.locator('.group-row:has-text("E2E Gruppe") .slider');
+    await api(PORTS.desk, '/json/state', { on: true, bri: 200 });
+    await api(PORTS.bedroom, '/json/state', { on: true, bri: 100 });
+    // Nicht auf den Gruppenregler warten: Der zeigte schon vorher 200 und verrät nicht, ob die neuen Werte angekommen sind.
+    await win.waitForFunction(() => {
+      const bri = (name) =>
+        [...document.querySelectorAll('.device-row')].find((r) => r.querySelector('.device-name')?.textContent === name)?.querySelector('.slider')?.value;
+      return bri('Mock Desk') === '200' && bri('Mock Bedroom') === '100';
+    });
+    await slider.fill('100');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 100 && (await state(PORTS.bedroom)).bri === 50, 'Desk 100, Bedroom 50');
+    await win.waitForTimeout(1000); // Zug ist nach 800 ms ohne Änderung beendet
+    await slider.focus();
+    await win.keyboard.press('End');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 255 && (await state(PORTS.bedroom)).bri === 128, 'Ende: Desk 255, Bedroom 128');
+    // Im selben Zug kommen die Verhältnisse zurück …
+    await win.waitForTimeout(1000);
+    await slider.fill('1');
+    await slider.fill('255');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 255 && (await state(PORTS.bedroom)).bri === 128, 'selber Zug: Desk 255, Bedroom 128');
+    // … nach dem Ende des Zugs nicht mehr
+    await slider.fill('1');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 1 && (await state(PORTS.bedroom)).bri === 1, 'beide auf 1');
+    await win.waitForTimeout(1000);
+    await slider.fill('255');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 255 && (await state(PORTS.bedroom)).bri === 255, 'neuer Zug: beide 255');
+  });
+
+  await step('Gruppenregler schaltet eine ausgeschaltete Gruppe anteilig ein', async () => {
+    await api(PORTS.desk, '/json/state', { on: false, bri: 200 });
+    await api(PORTS.bedroom, '/json/state', { on: false, bri: 100 });
+    await win.waitForFunction(() => document.querySelector('.group-row .toggle')?.getAttribute('aria-checked') === 'false');
+    await win.waitForTimeout(1000);
+    await win.locator('.group-row:has-text("E2E Gruppe") .slider').fill('100');
+    await waitFor(async () => {
+      const [d, b] = [await state(PORTS.desk), await state(PORTS.bedroom)];
+      return d.on && b.on && d.bri === 100 && b.bri === 50;
+    }, 'beide an mit 100 und 50');
+  });
+
+  await step('Gruppe anlegen, doppelter Name, umbenennen, löschen', async () => {
+    const saved = () => JSON.parse(readFileSync(path.join(userData, 'groups.json'), 'utf8'));
+    await win.click('.sidebar-foot .btn:has-text("Gruppe")');
+    await win.fill('.modal .group-name input', 'e2e gruppe');
+    await win.click('.modal .check:has-text("Mock Desk")');
+    await win.click('.modal .btn.primary');
+    await win.waitForFunction(() => document.querySelector('.modal .error')?.textContent?.includes('gibt es schon'));
+    await win.fill('.modal .group-name input', 'Schreibtisch');
+    await win.click('.modal .btn.primary');
+    await win.waitForSelector('.modal', { state: 'detached' });
+    await win.waitForSelector('.group-row:has-text("Schreibtisch")');
+    await waitFor(() => saved().some((g) => g.name === 'Schreibtisch' && g.members.join() === 'dev-desk'), 'groups.json mit neuer Gruppe');
+    await win.click('.group-row:has-text("Schreibtisch")', { button: 'right' });
+    await win.fill('.modal .group-name input', 'Arbeitsplatz');
+    await win.click('.modal .btn.primary');
+    await win.waitForSelector('.group-row:has-text("Arbeitsplatz")');
+    await waitFor(() => saved().some((g) => g.name === 'Arbeitsplatz'), 'groups.json umbenannt');
+    win.once('dialog', (d) => d.accept());
+    await win.click('.group-row:has-text("Arbeitsplatz")', { button: 'right' });
+    await win.click('.modal .btn.danger');
+    await win.waitForSelector('.group-row:has-text("Arbeitsplatz")', { state: 'detached' });
+    await waitFor(() => saved().length === 1 && saved()[0].name === 'E2E Gruppe', 'groups.json nach dem Löschen');
+  });
+
   await step('Dialog sucht beim Öffnen per mDNS', async () => {
     await win.click('.sidebar-foot .btn:has-text("Gerät")');
     await win.waitForFunction(() => document.querySelectorAll('.scan-row').length === 3, null, { timeout: 8000 });
@@ -405,6 +495,27 @@ try {
     await win.keyboard.press('Escape');
   });
 
+  await step('Entferntes Gerät fällt aus der Gruppe', async () => {
+    const saved = () => JSON.parse(readFileSync(path.join(userData, 'groups.json'), 'utf8'));
+    await win.click('.sidebar-foot .btn:has-text("Gruppe")');
+    await win.fill('.modal .group-name input', 'Mit Extra');
+    await win.click('.modal .check:has-text("Mock Desk")');
+    await win.click('.modal .check:has-text("Mock Extra")');
+    await win.click('.modal .btn.primary');
+    await win.waitForSelector('.group-row:has-text("Mit Extra")');
+    win.once('dialog', (d) => d.accept());
+    await win.click('.device-row:has-text("Mock Extra")', { button: 'right' });
+    await win.click('.modal .btn.danger');
+    await win.waitForFunction(() => document.querySelectorAll('.device-row').length === 2, null, { timeout: 6000 });
+    const members = await win.locator('.group-row:has-text("Mit Extra") .device-sub').textContent();
+    expect(members === 'Mock Desk', `Mitglieder nach dem Entfernen: ${members}`);
+    await waitFor(() => saved().some((g) => g.name === 'Mit Extra' && g.members.join() === 'dev-desk'), 'groups.json ohne Extra');
+    win.once('dialog', (d) => d.accept());
+    await win.click('.group-row:has-text("Mit Extra")', { button: 'right' });
+    await win.click('.modal .btn.danger');
+    await win.waitForSelector('.group-row:has-text("Mit Extra")', { state: 'detached' });
+  });
+
   await step('Nachtlicht-Popover', async () => {
     await win.keyboard.press('Control+1');
     await win.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
@@ -425,12 +536,12 @@ try {
   });
 
   await step('Sprachwechsel auf Englisch und zurück', async () => {
-    await win.click('.sidebar-foot .icon-btn');
+    await win.click('.sidebar-foot .settings-btn');
     await win.click('.modal .seg-switch button:has-text("English")');
     await win.waitForFunction(() => document.querySelector('.tab[data-tab="colors"]')?.textContent?.includes('Colors'));
     await fly.waitForFunction(() => /All (on|off)/.test(document.querySelector('.flyout-head .btn')?.textContent ?? ''));
     await win.screenshot({ path: path.join(SHOTS, '14-english.png') });
-    await win.click('.sidebar-foot .icon-btn');
+    await win.click('.sidebar-foot .settings-btn');
     await win.click('.modal .seg-switch button:has-text("Deutsch")');
     await win.waitForFunction(() => document.querySelector('.tab[data-tab="colors"]')?.textContent?.includes('Farben'));
     await win.keyboard.press('Escape');

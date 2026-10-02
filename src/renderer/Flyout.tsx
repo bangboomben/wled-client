@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { t } from '../shared/i18n';
+import { GroupRow } from './components/Groups';
 import { Icon, Logo } from './components/Icon';
 import { DeviceDot, QuickControls, deviceAccent, statusText } from './components/Sidebar';
-import { sendAll, useDevices, wled } from './lib/store';
+import { sendAll, useDevices, useGroups, wled } from './lib/store';
 
 /** Schnellzugriff aus dem Infobereich: Ein/Aus und Helligkeit aller Geräte. */
 export function Flyout() {
   const devices = useDevices();
+  const groups = useGroups();
   const root = useRef<HTMLDivElement>(null);
   const anyOn = devices.some((d) => d.status === 'online' && d.state?.on);
 
@@ -40,6 +42,9 @@ export function Flyout() {
         </button>
       </div>
       <div className="flyout-list">
+        {groups.map((g) => (
+          <GroupRow key={g.id} group={g} devices={devices} />
+        ))}
         {devices.map((d) => (
           <div key={d.id} className={`device-row flyout-row${d.status === 'online' ? '' : ' offline'}`} style={deviceAccent(d)}>
             <DeviceDot device={d} />

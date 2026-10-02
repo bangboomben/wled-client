@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { t } from '../shared/i18n';
 import { DeviceView } from './components/DeviceView';
-import { AddDeviceDialog, AppSettingsDialog, DeviceEditDialog, ScanProgressBar } from './components/dialogs';
+import { AddDeviceDialog, AppSettingsDialog, DeviceEditDialog, GroupDialog, ScanProgressBar } from './components/dialogs';
 import { Toasts } from './components/controls';
 import { Icon, Logo } from './components/Icon';
 import { Sidebar } from './components/Sidebar';
-import { store, useDevices, useScan, wled } from './lib/store';
+import { store, useDevices, useGroups, useScan, wled } from './lib/store';
 import { accentFor } from './lib/wled';
 
-type Dialog = { type: 'add' } | { type: 'settings' } | { type: 'edit'; id: string } | null;
+type Dialog = { type: 'add' } | { type: 'settings' } | { type: 'edit'; id: string } | { type: 'group'; id?: string } | null;
 
 function Welcome({ onAdd }: { onAdd: () => void }) {
   const scan = useScan();
@@ -49,6 +49,7 @@ const isTyping = (t: EventTarget | null) =>
 
 export function App() {
   const devices = useDevices();
+  const groups = useGroups();
   const [selectedId, setSelectedId] = useState<string | undefined>(() => store.settings.selectedId);
   const [dialog, setDialog] = useState<Dialog>(null);
   const selected = devices.find((d) => d.id === selectedId) ?? devices[0];
@@ -94,16 +95,22 @@ export function App() {
   }, [accent.accent, accent.contrast]);
 
   const editDevice = dialog?.type === 'edit' ? devices.find((d) => d.id === dialog.id) : undefined;
+  const editGroup = dialog?.type === 'group' && dialog.id ? groups.find((g) => g.id === dialog.id) : undefined;
+  // Eine Gruppe, die es nicht mehr gibt (eben gelöscht), öffnet keinen leeren Dialog.
+  const groupDialogOpen = dialog?.type === 'group' && (!dialog.id || !!editGroup);
 
   return (
     <div className="app">
       <Sidebar
         devices={devices}
+        groups={groups}
         selectedId={selectedKey}
         onSelect={setSelectedId}
         onAdd={() => setDialog({ type: 'add' })}
+        onAddGroup={() => setDialog({ type: 'group' })}
         onSettings={() => setDialog({ type: 'settings' })}
         onEdit={(id) => setDialog({ type: 'edit', id })}
+        onEditGroup={(id) => setDialog({ type: 'group', id })}
       />
       <main className="main">
         {selected ? (
@@ -115,6 +122,7 @@ export function App() {
       {dialog?.type === 'add' && <AddDeviceDialog onClose={() => setDialog(null)} onAdded={(id) => setSelectedId(id)} />}
       {editDevice && <DeviceEditDialog device={editDevice} onClose={() => setDialog(null)} />}
       {dialog?.type === 'settings' && <AppSettingsDialog onClose={() => setDialog(null)} />}
+      {groupDialogOpen && <GroupDialog group={editGroup} devices={devices} onClose={() => setDialog(null)} />}
       <Toasts />
     </div>
   );
