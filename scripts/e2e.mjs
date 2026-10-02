@@ -126,15 +126,14 @@ async function closeApp(electronApp, label) {
   if (finished.has(electronApp)) return true;
   finished.add(electronApp);
   const proc = electronApp.process();
+  const exited = proc.exitCode !== null ? Promise.resolve() : new Promise((r) => proc.once('exit', r));
   await traceQuit(electronApp);
   const started = Date.now();
-  const closed = await Promise.race([
-    electronApp.close().then(
-      () => true,
-      () => false,
-    ),
-    new Promise((r) => setTimeout(() => r(false), 15_000)),
-  ]);
+  // Beenden wie über das Tray-Menü (app.quit im Hauptprozess) und auf das Prozessende warten.
+  // Bewusst nicht über electronApp.close(): Damit blieb der Lauf zweimal hängen, obwohl die
+  // App mit app.quit() auf GitHub wie lokal nach rund 200 ms endet (22 von 22 protokollierten Läufen).
+  await electronApp.evaluate(({ app }) => app.quit()).catch(() => {});
+  const closed = await Promise.race([exited.then(() => true), new Promise((r) => setTimeout(() => r(false), 15_000))]);
   if (closed) {
     console.log(`  ${label}: beendet nach ${Date.now() - started} ms`);
     return true;
