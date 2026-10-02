@@ -22,10 +22,13 @@ export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devic
   // Stand bei Zugbeginn: Zieht man im selben Zug wieder hoch, kommen die Verhältnisse zurück.
   const base = useRef<BriTarget[] | null>(null);
   const idle = useRef<number | undefined>(undefined);
+  // Maus oder Stift halten den Regler: Der Zug endet beim Loslassen (onCommit), nie über die Pause.
+  const dragging = useRef(false);
   useEffect(() => () => window.clearTimeout(idle.current), []);
 
   const endGesture = () => {
     window.clearTimeout(idle.current);
+    dragging.current = false;
     base.current = null;
   };
 
@@ -33,7 +36,8 @@ export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devic
     base.current ??= brightnessBase(members);
     for (const { id, bri } of scaleBrightness(base.current, v)) send(id, { bri }, 'bri');
     window.clearTimeout(idle.current);
-    idle.current = window.setTimeout(endGesture, GESTURE_IDLE_MS);
+    // Tastatur: Der Zug endet nach einer Pause ohne Änderung.
+    if (!dragging.current) idle.current = window.setTimeout(endGesture, GESTURE_IDLE_MS);
   };
 
   const setPower = (on: boolean) => {
@@ -58,7 +62,13 @@ export function GroupRow({ group, devices, onEdit }: { group: DeviceGroup; devic
         <div className="device-sub">{memberText(members)}</div>
       </div>
       <Toggle checked={view.lit} disabled={!usable} label={t('Gruppe {name} ein- oder ausschalten', { name: group.name })} onChange={setPower} />
-      <div className="row-slider">
+      {/* Capture-Phase: Der Regler hält pointerdown selbst an. */}
+      <div
+        className="row-slider"
+        onPointerDownCapture={() => {
+          dragging.current = true;
+        }}
+      >
         <Slider
           variant="mini"
           value={view.bri}

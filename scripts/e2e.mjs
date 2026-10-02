@@ -398,6 +398,7 @@ try {
     const slider = win.locator('.group-row:has-text("E2E Gruppe") .slider');
     await api(PORTS.desk, '/json/state', { on: true, bri: 200 });
     await api(PORTS.bedroom, '/json/state', { on: true, bri: 100 });
+    // Nicht auf den Gruppenregler warten: Der zeigte schon vorher 200 und verrät nicht, ob die neuen Werte angekommen sind.
     await win.waitForFunction(() => {
       const bri = (name) =>
         [...document.querySelectorAll('.device-row')].find((r) => r.querySelector('.device-name')?.textContent === name)?.querySelector('.slider')?.value;
@@ -409,6 +410,17 @@ try {
     await slider.focus();
     await win.keyboard.press('End');
     await waitFor(async () => (await state(PORTS.desk)).bri === 255 && (await state(PORTS.bedroom)).bri === 128, 'Ende: Desk 255, Bedroom 128');
+    // Im selben Zug kommen die Verhältnisse zurück …
+    await win.waitForTimeout(1000);
+    await slider.fill('1');
+    await slider.fill('255');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 255 && (await state(PORTS.bedroom)).bri === 128, 'selber Zug: Desk 255, Bedroom 128');
+    // … nach dem Ende des Zugs nicht mehr
+    await slider.fill('1');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 1 && (await state(PORTS.bedroom)).bri === 1, 'beide auf 1');
+    await win.waitForTimeout(1000);
+    await slider.fill('255');
+    await waitFor(async () => (await state(PORTS.desk)).bri === 255 && (await state(PORTS.bedroom)).bri === 255, 'neuer Zug: beide 255');
   });
 
   await step('Gruppenregler schaltet eine ausgeschaltete Gruppe anteilig ein', async () => {
