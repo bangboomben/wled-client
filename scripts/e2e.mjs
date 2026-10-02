@@ -163,6 +163,7 @@ const waitFor = async (fn, msg, timeout = 4000) => {
 };
 
 // mDNS-Anfragen gehen an den Mock statt ins Netzwerk
+const mainErrors = [];
 const launch = async (dataDir) => {
   const electronApp = await electron.launch({
     ...(EXE ? { executablePath: path.resolve(EXE), args: [] } : { args: ['.'] }),
@@ -175,8 +176,11 @@ const launch = async (dataDir) => {
     colorScheme: 'dark',
     timeout: 60_000,
   });
-  // Ausgaben des Hauptprozesses ins Protokoll (Fehler beim Start usw.)
-  electronApp.process().stderr?.on('data', (d) => process.stderr.write(`  [app] ${d}`));
+  // Ausgaben des Hauptprozesses ins Protokoll; unerwartete Fehler lassen den Lauf scheitern
+  electronApp.process().stderr?.on('data', (d) => {
+    process.stderr.write(`  [app] ${d}`);
+    if (String(d).includes('Unerwarteter Fehler im Hauptprozess')) mainErrors.push(String(d).trim().split('\n')[0]);
+  });
   return electronApp;
 };
 console.log('  Mock läuft, starte App …');
@@ -466,6 +470,9 @@ await step('Erster Start übernimmt die Geräte aus der mDNS-Suche', async () =>
     await closeApp(first, 'Erster Start');
     removeDir(fresh);
   }
+});
+await step('Keine unerwarteten Fehler im Hauptprozess', async () => {
+  expect(!mainErrors.length, `${mainErrors.length}× – ${mainErrors[0]}`);
 });
 mock.kill();
 clearTimeout(watchdog);

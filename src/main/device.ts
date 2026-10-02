@@ -108,7 +108,13 @@ async function readCapped(res: Response): Promise<string> {
  * (abgeschnittenes JSON) oder antwortet bei schwachem WLAN zu spät. Mit `retries` wird
  * dann wiederholt — mit wachsender Pause, und zwischen den Versuchen kommen andere
  * Anfragen an dasselbe Gerät dran. Antworten mit 4xx (etwa ein Endpunkt, den ältere
- * Firmware nicht kennt) und abgebrochene Anfragen werden nicht wiederholt.
+ * Firmware nicht kennt) werden nicht wiederholt.
+ *
+ * `signal` (die Sitzung einer Verbindung): Ist es abgebrochen, startet keine weitere Anfrage
+ * und kein weiterer Versuch. Laufende Anfragen enden über ihr Zeitlimit, ihr Ergebnis verwirft
+ * der Aufrufer. Das Signal hängt bewusst nicht an fetch(): Brach stop() so mehrere Anfragen
+ * gleichzeitig ab, warf undici eine Assertion (`controller != null`) als unbehandelten Fehler,
+ * und dessen Fehlerfenster blockierte das Beenden der App.
  */
 export async function requestJson<T>(
   host: string,
@@ -120,12 +126,12 @@ export async function requestJson<T>(
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await serialized(host, async () => {
-        const timeout = AbortSignal.timeout(opts.timeout ?? HTTP_TIMEOUT_MS);
+        if (opts.signal?.aborted) throw new Error('Verbindung beendet');
         const res = await fetch(`http://${host}${path}`, {
           method: opts.method ?? 'GET',
           headers: opts.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
           body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-          signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout,
+          signal: AbortSignal.timeout(opts.timeout ?? HTTP_TIMEOUT_MS),
         });
         if (!res.ok) throw new HttpError(res.status);
         return JSON.parse(await readCapped(res)) as T;
@@ -246,7 +252,7 @@ export class DeviceConnection extends EventEmitter {
   staticRev = 0;
 
   private ws: WebSocket | null = null;
-  /** Gilt bis zum nächsten stop(): Laufende Anfragen brechen dann ab, ihre Ergebnisse werden verworfen. */
+  /** Gilt bis zum nächsten stop(): Danach startet keine Anfrage dieser Sitzung mehr, Ergebnisse noch laufender werden verworfen. */
   private session = new AbortController();
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
