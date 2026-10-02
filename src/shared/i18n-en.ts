@@ -362,5 +362,6 @@ export const EN: Record<string, string> = {
   'Bitte einen Namen eingeben.': 'Please enter a name.',
   'Der Name darf höchstens {n} Zeichen haben.': 'The name can be at most {n} characters long.',
   'Eine Gruppe „{name}“ gibt es schon.': 'A group named “{name}” already exists.',
+  'Gruppe nicht gefunden': 'Group not found',
   'Bitte mindestens ein Gerät auswählen.': 'Please select at least one device.',
 };
