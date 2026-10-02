@@ -137,6 +137,14 @@ export interface DeviceConfig {
   lastName?: string;
 }
 
+/** Frei zusammengestellte Gruppe; ein Gerät kann in mehreren Gruppen stecken. */
+export interface DeviceGroup {
+  id: string;
+  name: string;
+  /** Geräte-IDs, ohne Doppelte. */
+  members: string[];
+}
+
 export type DeviceStatus = 'connecting' | 'online' | 'offline';
 
 export interface DeviceSnapshot {
