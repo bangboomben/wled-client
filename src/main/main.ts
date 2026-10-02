@@ -21,6 +21,10 @@ import { Scanner, localSubnets } from './discovery';
 import { Store, cleanSettings } from './store';
 import { Updater } from './updater';
 
+// Ein unerwarteter Fehler im Hauptprozess wird protokolliert, statt Electrons modales Fehlerfenster
+// zu öffnen: Das blockiert den Hauptprozess, und die App lässt sich nicht mehr beenden.
+process.on('uncaughtException', (err) => console.error('Unerwarteter Fehler im Hauptprozess:', err));
+
 // Für Tests: eigenes Datenverzeichnis, damit eine installierte Instanz unberührt bleibt.
 if (process.env.WLED_CLIENT_USER_DATA) app.setPath('userData', process.env.WLED_CLIENT_USER_DATA);
 
