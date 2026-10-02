@@ -1,7 +1,7 @@
 {
   "name": "wled-client",
   "productName": "WLED Client",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Unofficial Windows desktop client for WLED: switch between devices, colors, effects, palettes, segments, presets and a tray quick-access with brightness sliders.",
   "author": "bangboomben",
   "license": "EUPL-1.2",
@@ -44,6 +44,12 @@
       "LICENSE"
     ],
     "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "onlyLoadAppFromAsar": true,
+      "enableEmbeddedAsarIntegrityValidation": true
+    },
     "publish": [
       {
         "provider": "github",
