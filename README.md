@@ -180,7 +180,8 @@ WLED Client ist eine Windows-App für alle WLED-Controller im Netz: Geräte per 
 Helligkeit und Ein/Aus direkt in der Seitenleiste und im Tray-Schnellzugriff, dazu alles, was die
 WLED-Weboberfläche kann (Farben, Effekte, Paletten, Segmente, Presets, Playlists, Nachtlicht, Sync,
 Live-Vorschau). Mehrere Lampen lassen sich zu Gruppen zusammenfassen und gemeinsam schalten
-und dimmen. Ein Klick auf eine Gruppe zeigt ihre Lampen und setzt Farbe, Effekt oder Palette für alle auf einmal. Den Look einer Lampe (Effekt, Palette, Farben) überträgt „Übertragen“ auf andere Lampen oder Gruppen.
+und dimmen. Ein Klick auf eine Gruppe zeigt ihre Lampen und setzt Farbe, Effekt oder Palette für alle auf einmal.
+Den Look einer Lampe (Effekt, Palette, Farben) überträgt „Übertragen“ auf andere Lampen oder Gruppen.
 Installer unter [Releases](https://github.com/bangboomben/wled-client/releases/latest),
 Installation ohne Administratorrechte. Die Oberfläche spricht Deutsch und Englisch, je nach Windows-Sprache.
 

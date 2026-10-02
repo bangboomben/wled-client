@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { groupMembers } from '../../shared/groups';
 import { t } from '../../shared/i18n';
 import { commonNames, copySummary, failureSummary, lookFrom, type GroupAction } from '../../shared/look';
@@ -32,15 +32,80 @@ function MemberCard({ device, st, onOpen }: { device: DeviceSnapshot; st: Device
         <DeviceDot device={device} />
         <span className="device-name">{device.name}</span>
       </div>
-      <div className="member-look">{online ? lookText(device, st) || '—' : t('Offline')}</div>
+      <div className="member-look">{(online && lookText(device, st)) || '—'}</div>
       <div className="member-state muted small">{statusText(device)}</div>
       <div className="member-controls">
         <QuickControls device={device} />
       </div>
-      <button className="link-btn" onClick={() => onOpen(device.id)}>
+      <button className="link-btn" aria-label={t('{name} öffnen', { name: device.name })} onClick={() => onOpen(device.id)}>
         {t('Öffnen')} →
       </button>
     </div>
+  );
+}
+
+/**
+ * Auswahlliste als Aktion: Nach dem Setzen zeigt sie wieder ihren Platzhalter.
+ * Unter Windows löst schon ein Pfeil- oder Buchstabentastendruck auf der geschlossenen Liste „change“ aus —
+ * ein Tastendruck würde sonst sofort alle Lampen überschreiben. Darum: Mit der Maus gewählt, gilt die
+ * Auswahl sofort; per Tastatur wird sie nur vorgemerkt und erst mit Enter angewendet.
+ * Als Tastatur zählt allein ein keydown; jede angewendete oder verworfene Wahl setzt die Marke zurück,
+ * eine Änderung ohne Tastendruck (z. B. aus Tests) wendet also sofort an.
+ */
+function ActionSelect({
+  label,
+  disabled,
+  options,
+  onPick,
+}: {
+  label: string;
+  disabled: boolean;
+  options: Array<{ value: string; label: string }>;
+  onPick: (value: string) => void;
+}) {
+  const [pending, setPending] = useState('');
+  const last = useRef<'keyboard' | 'pointer'>('pointer');
+
+  const discard = () => {
+    last.current = 'pointer';
+    setPending('');
+  };
+
+  return (
+    <select
+      value={pending}
+      disabled={disabled}
+      aria-label={label}
+      onPointerDown={() => {
+        last.current = 'pointer';
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') return discard();
+        if (e.key !== 'Enter') {
+          last.current = 'keyboard';
+          return;
+        }
+        if (!pending) return;
+        e.preventDefault();
+        const value = pending;
+        discard();
+        onPick(value);
+      }}
+      onBlur={discard}
+      onChange={(e) => {
+        const value = e.target.value;
+        if (last.current === 'keyboard') return setPending(value);
+        discard();
+        if (value) onPick(value);
+      }}
+    >
+      <option value="">{label}</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -106,31 +171,24 @@ function ForAll({ members, statics }: { members: DeviceSnapshot[]; statics: Arra
         ))}
       </div>
       <div className="for-all-row">
-        {/* Auswahllisten sind Aktionen: Nach dem Setzen zeigen sie wieder ihren Platzhalter. */}
-        <select value="" disabled={!ready || busy} aria-label={t('Effekt für alle …')} onChange={(e) => e.target.value && void apply({ kind: 'effect', name: e.target.value })}>
-          <option value="">{t('Effekt für alle …')}</option>
-          {effects.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <select value="" disabled={!ready || busy} aria-label={t('Palette für alle …')} onChange={(e) => e.target.value && void apply({ kind: 'palette', name: e.target.value })}>
-          <option value="">{t('Palette für alle …')}</option>
-          {palettes.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <select value="" disabled={reach.length < 2 || busy} aria-label={t('Look von …')} onChange={(e) => e.target.value && void copyFrom(e.target.value)}>
-          <option value="">{t('Look von …')}</option>
-          {reach.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
+        <ActionSelect
+          label={t('Effekt für alle …')}
+          disabled={!ready || busy}
+          options={effects.map((n) => ({ value: n, label: n }))}
+          onPick={(name) => void apply({ kind: 'effect', name })}
+        />
+        <ActionSelect
+          label={t('Palette für alle …')}
+          disabled={!ready || busy}
+          options={palettes.map((n) => ({ value: n, label: n }))}
+          onPick={(name) => void apply({ kind: 'palette', name })}
+        />
+        <ActionSelect
+          label={t('Look von …')}
+          disabled={!ready || reach.length < 2 || busy}
+          options={reach.map((d) => ({ value: d.id, label: d.name }))}
+          onPick={(id) => void copyFrom(id)}
+        />
       </div>
     </section>
   );
@@ -151,6 +209,8 @@ export function GroupView({
   const members = groupMembers(group, devices);
   const statics = useStatics(members);
   const c = useGroupControls(members);
+  // Beim Start verbinden sich die Mitglieder noch: Dann gibt es keinen Hinweis auf „nicht erreichbar“.
+  const connecting = members.some((d) => d.status === 'connecting');
   const count = members.length === 1 ? t('Gruppe · 1 Gerät') : t('Gruppe · {n} Geräte', { n: members.length });
 
   return (
@@ -170,7 +230,7 @@ export function GroupView({
         </div>
       ) : (
         <div className="device-body">
-          {!c.usable && (
+          {!c.usable && !connecting && (
             <div className="banner">
               <Icon name="wifi" size={16} />
               {t('Kein Gerät der Gruppe ist erreichbar.')}

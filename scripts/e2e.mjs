@@ -632,6 +632,8 @@ try {
     await win.waitForSelector('.group-view .for-all');
     const eff = await api(PORTS.desk, '/json/eff');
     const pal = await api(PORTS.desk, '/json/pal');
+    // Bedroom startet mit Palette 0, damit „beide Party“ die Palettenaktion wirklich belegt
+    await api(PORTS.bedroom, '/json/state', { seg: [{ id: 0, pal: 0 }] });
     const before = { [PORTS.desk]: await state(PORTS.desk), [PORTS.bedroom]: await state(PORTS.bedroom) };
     await win.click('.for-all .quick-btn[title="Rot"]');
     await waitFor(async () => {
@@ -657,6 +659,22 @@ try {
       'beide Party',
     );
     expect((await win.$eval('.for-all select[aria-label="Effekt für alle …"]', (el) => el.value)) === '', 'Effektauswahl nicht zurückgesetzt');
+    // Pfeiltaste auf der geschlossenen Liste ändert nur den Wert, angewendet wird erst mit Enter
+    const effSel = '.for-all select[aria-label="Effekt für alle …"]';
+    await win.waitForFunction(() => !document.querySelector('.for-all select')?.disabled);
+    await win.focus(effSel);
+    await win.keyboard.press('ArrowDown');
+    await win.waitForTimeout(700);
+    for (const p of [PORTS.desk, PORTS.bedroom]) {
+      expect((await state(p)).seg[0].fx === eff.indexOf('Rainbow'), `Port ${p}: Pfeiltaste hat den Effekt schon angewendet`);
+    }
+    const first = await win.$eval(`${effSel} option:nth-child(2)`, (el) => el.value);
+    expect(first !== 'Rainbow' && eff.includes(first), `erste Effektoption: ${first}`);
+    await win.keyboard.press('Enter');
+    await waitFor(
+      async () => (await state(PORTS.desk)).seg[0].fx === eff.indexOf(first) && (await state(PORTS.bedroom)).seg[0].fx === eff.indexOf(first),
+      `beide ${first} per Enter`,
+    );
   });
 
   await step('Für alle: Look von Mock Desk', async () => {

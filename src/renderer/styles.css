@@ -515,6 +515,11 @@ input:disabled {
   opacity: 0.6;
 }
 
+select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -886,6 +891,10 @@ input:disabled {
   cursor: pointer;
 }
 
+.group-row.selectable:hover:not(.active) {
+  background: var(--panel);
+}
+
 .group-row.active {
   background: var(--panel-2);
   box-shadow: inset 0 0 0 1px var(--border-strong);
@@ -1060,6 +1069,11 @@ input:disabled {
 
 .power-btn:hover:not(:disabled) {
   color: var(--text);
+}
+
+.power-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .power-btn.on {
@@ -1483,8 +1497,13 @@ input:disabled {
   font-weight: 700;
 }
 
-.quick-btn:hover {
+.quick-btn:hover:not(:disabled) {
   transform: scale(1.1);
+}
+
+.quick-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .quick-w {
