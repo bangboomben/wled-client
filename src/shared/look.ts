@@ -96,9 +96,9 @@ export function lookPatch(look: Look, state: WledState, st: DeviceStatic | null)
   if (!st) return { reason: t('Effektliste noch nicht geladen') };
   if (look.pal === null) return { reason: t('Eigene Paletten lassen sich nicht übertragen') };
   const fx = st.effects.indexOf(look.fx);
-  if (fx < 0) return { reason: t('Effekt „{name}” gibt es dort nicht', { name: look.fx }) };
+  if (fx < 0) return { reason: t('Effekt „{name}“ gibt es dort nicht', { name: look.fx }) };
   const pal = st.palettes.indexOf(look.pal);
-  if (pal < 0) return { reason: t('Palette „{name}” gibt es dort nicht', { name: look.pal }) };
+  if (pal < 0) return { reason: t('Palette „{name}“ gibt es dort nicht', { name: look.pal }) };
   const { sx, ix, c1, c2, c3, o1, o2, o3 } = look;
   return {
     patch: {

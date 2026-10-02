@@ -99,8 +99,8 @@ describe('lookPatch', () => {
   it('nennt die Gründe in fester Reihenfolge', () => {
     expect(lookPatch({ ...LOOK, pal: null }, targetState, null)).toEqual({ reason: 'Effektliste noch nicht geladen' });
     expect(lookPatch({ ...LOOK, fx: 'Blink', pal: null }, targetState, TARGET)).toEqual({ reason: 'Eigene Paletten lassen sich nicht übertragen' });
-    expect(lookPatch({ ...LOOK, fx: 'Blink', pal: 'Ocean' }, targetState, TARGET)).toEqual({ reason: 'Effekt „Blink” gibt es dort nicht' });
-    expect(lookPatch({ ...LOOK, pal: 'Ocean' }, targetState, TARGET)).toEqual({ reason: 'Palette „Ocean” gibt es dort nicht' });
+    expect(lookPatch({ ...LOOK, fx: 'Blink', pal: 'Ocean' }, targetState, TARGET)).toEqual({ reason: 'Effekt „Blink“ gibt es dort nicht' });
+    expect(lookPatch({ ...LOOK, pal: 'Ocean' }, targetState, TARGET)).toEqual({ reason: 'Palette „Ocean“ gibt es dort nicht' });
   });
 });
 
@@ -127,8 +127,8 @@ describe('copySummary', () => {
   const nameOf = (id: string) => `Lampe ${id}`;
 
   it('zählt Erfolge und hängt Gründe an', () => {
-    const results = [{ id: 'a', ok: true }, { id: 'b', ok: true }, { id: 'c', ok: false, reason: 'Effekt „X” gibt es dort nicht' }];
-    expect(copySummary(results, nameOf)).toBe('Look auf 2 Geräte übertragen · Lampe c: Effekt „X” gibt es dort nicht');
+    const results = [{ id: 'a', ok: true }, { id: 'b', ok: true }, { id: 'c', ok: false, reason: 'Effekt „X“ gibt es dort nicht' }];
+    expect(copySummary(results, nameOf)).toBe('Look auf 2 Geräte übertragen · Lampe c: Effekt „X“ gibt es dort nicht');
   });
 
   it('nutzt die Einzahl für ein Gerät', () => {
