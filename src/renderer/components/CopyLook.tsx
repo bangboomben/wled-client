@@ -13,7 +13,7 @@ const toggled = (list: string[], id: string, on: boolean) => (on ? [...list, id]
 /** „Übertragen“: Effekt, Palette, Farben und Effekt-Regler des angezeigten Segments auf andere Geräte und Gruppen. */
 export function CopyLookPopover({ device, state, st }: { device: DeviceSnapshot; state: WledState; st: DeviceStatic | null }) {
   const online = device.status === 'online';
-  const look = lookFrom(viewSeg(state), st);
+  const look = state.seg.length ? lookFrom(viewSeg(state), st) : null;
 
   return (
     <Popover
@@ -102,7 +102,7 @@ function CopyLookForm({ device, look, close }: { device: DeviceSnapshot; look: L
           disabled={busy || !online || !look || customPalette || !targets.length}
           onClick={() => void run()}
         >
-          {t('Übertragen')}
+          {busy ? t('Übertrage …') : t('Übertragen')}
         </button>
       </div>
     </div>

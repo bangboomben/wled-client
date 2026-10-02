@@ -29,7 +29,7 @@ power and brightness of all lights from the Windows tray without opening anythin
 - **Groups** — put lights into groups and switch or dim them together from the sidebar, the tray quick-access and
   the tray menu; brightness scales proportionally, so dimmer lights stay dimmer
 - **Copy a look** — send the effect, palette, colors and effect sliders of one light to other lights or whole groups
-  with two clicks; brightness and on/off stay as they are, effects and palettes are matched by name
+  in a few clicks; brightness and on/off stay as they are, effects and palettes are matched by name
 - **Everything the web UI does**
   - **Colors** — color wheel, three color slots, hex/RGB, white channel (RGBW), color temperature (CCT), quick colors
   - **Effects** — all effects with search and filters (palette, 1D, 2D, audio); sliders and options are labeled

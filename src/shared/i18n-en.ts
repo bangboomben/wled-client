@@ -376,9 +376,9 @@ export const EN: Record<string, string> = {
   'Geräte in dieser Gruppe': 'Devices in this group',
   'Gruppe „{name}“ löschen? Die Lampen bleiben, wie sie sind.': 'Delete group “{name}”? The lights stay as they are.',
 
-  // Copy Look
+  // Look übertragen
   'Effektliste noch nicht geladen': 'Effect list not loaded yet',
-  'Eigene Paletten lassen sich nicht übertragen': 'Custom palettes can’t be copied',
+  'Eigene Paletten lassen sich nicht übertragen': "Custom palettes can't be copied",
   'Effekt „{name}“ gibt es dort nicht': 'No effect “{name}” there',
   'Palette „{name}“ gibt es dort nicht': 'No palette “{name}” there',
   'Look nicht übertragen': 'Look not copied',
@@ -386,6 +386,7 @@ export const EN: Record<string, string> = {
   'Look auf {n} Geräte übertragen': 'Look copied to {n} devices',
   '{name}: {reason}': '{name}: {reason}',
   'Übertragen': 'Copy look',
+  'Übertrage …': 'Copying …',
   'Look auf andere Geräte übertragen': 'Copy this look to other devices',
   'Look von „{name}“ übertragen': 'Copy the look of “{name}”',
   'Effekt, Palette, Farben und Effekt-Regler. Helligkeit und An/Aus bleiben, wie sie sind.':

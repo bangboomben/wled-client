@@ -1,4 +1,4 @@
-// „Look" eines Segments: Effekt, Palette, Farben und Effekt-Regler — übertragbar auf andere Geräte.
+// „Look“ eines Segments: Effekt, Palette, Farben und Effekt-Regler — übertragbar auf andere Geräte.
 // Effekt und Palette laufen beim Namen, weil sich die Nummern zwischen Firmware-Ständen unterscheiden.
 // Ohne Electron, damit Oberfläche und Hauptprozess dieselbe Rechnung nutzen und sie testbar bleibt.
 

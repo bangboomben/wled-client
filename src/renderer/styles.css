@@ -283,7 +283,8 @@ p {
   cursor: default;
 }
 
-.chip-btn.on {
+.chip-btn.on,
+.chip-btn.on:hover:not(:disabled) {
   background: var(--accent-soft);
   border-color: var(--accent-line);
   color: var(--text);
