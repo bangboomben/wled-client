@@ -577,6 +577,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   }).catch((err: unknown) => {
     // Ohne Fenster und Tray liefe die App unsichtbar weiter und blockierte jeden neuen Start.
+    console.error('Start fehlgeschlagen', err);
     dialog.showErrorBox('WLED Client', t('Start fehlgeschlagen: {reason}', { reason: err instanceof Error ? err.message : String(err) }));
     app.exit(1);
   });
