@@ -9,6 +9,7 @@
 [![Latest release](https://img.shields.io/github/v/release/bangboomben/wled-client?label=download&color=f5a524)](https://github.com/bangboomben/wled-client/releases/latest)
 [![License: EUPL-1.2](https://img.shields.io/badge/license-EUPL--1.2-blue)](LICENSE)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-buy_me_a_coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/mrbenedict)
 
 ![WLED Client demo: effects, palettes, brightness, color wheel, sidebar quick controls, presets](docs/demo.gif)
 
@@ -143,6 +144,12 @@ Helligkeit und Ein/Aus direkt in der Seitenleiste und im Tray-Schnellzugriff, da
 WLED-Weboberfläche kann (Farben, Effekte, Paletten, Segmente, Presets, Playlists, Nachtlicht, Sync,
 Live-Vorschau). Installer unter [Releases](https://github.com/bangboomben/wled-client/releases/latest),
 Installation ohne Administratorrechte. Die Oberfläche spricht Deutsch und Englisch, je nach Windows-Sprache.
+
+## Support
+
+If WLED Client saves you a few browser tabs, you can [buy me a coffee on Ko-fi](https://ko-fi.com/mrbenedict) ☕ —
+it keeps the next feature (and me) running. Bug reports and ideas in the
+[discussions](https://github.com/bangboomben/wled-client/discussions) help just as much.
 
 ## License & credits
 
