@@ -237,6 +237,29 @@ try {
     }, 'Farbe 3366ff');
   });
 
+  await step('RGB-Regler auf Abruf, Zustand bleibt gemerkt', async () => {
+    const red = win.locator('.slider[aria-label="Rot"]');
+    const toggle = win.locator('.rgb-toggle');
+    expect((await red.count()) === 0, 'RGB-Regler sind ohne Klick sichtbar');
+    expect((await win.locator('.slider[aria-label="Weißkanal"]').count()) === 1, 'Weißkanal fehlt bei zugeklappten RGB-Reglern');
+    expect((await toggle.getAttribute('aria-expanded')) === 'false', 'Knopf meldet nicht „zugeklappt“');
+    await toggle.click();
+    await red.fill('10');
+    await waitFor(async () => {
+      const c = (await state(PORTS.desk)).seg[0].col[0];
+      return c[0] === 10 && c[1] === 102 && c[2] === 255 && c.length === 4;
+    }, 'Rot = 10, Grün/Blau/W unverändert');
+    // Tab-Wechsel und Neuladen der Oberfläche: Die Regler bleiben offen
+    await win.click('.tab:has-text("Effekte")');
+    await win.click('.tab:has-text("Farben")');
+    await win.waitForSelector('.slider[aria-label="Rot"]', { timeout: 3000 });
+    await win.reload();
+    await win.waitForSelector('.slider[aria-label="Rot"]', { timeout: 8000 });
+    expect((await toggle.getAttribute('aria-expanded')) === 'true', 'Knopf meldet nach Neuladen nicht „aufgeklappt“');
+    await toggle.click();
+    await win.waitForSelector('.slider[aria-label="Rot"]', { state: 'detached', timeout: 3000 });
+  });
+
   await step('Effekt wählen, Regler mit Metadaten-Namen', async () => {
     await win.click('.tab:has-text("Effekte")');
     await win.fill('.fx-layout .search input >> nth=0', 'rainbow');

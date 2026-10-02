@@ -1315,6 +1315,28 @@ input:disabled {
   text-transform: uppercase;
 }
 
+.rgb-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.rgb-toggle:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.rgb-toggle-label {
+  font-weight: 600;
+}
+
 .quick {
   display: flex;
   flex-wrap: wrap;

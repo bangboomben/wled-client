@@ -133,6 +133,8 @@ export const EN: Record<string, string> = {
   'Farbe 2': 'Color 2',
   'Farbe 3': 'Color 3',
   'Hex-Farbwert': 'Hex color',
+  'RGB-Regler einblenden': 'Show RGB sliders',
+  'RGB-Regler ausblenden': 'Hide RGB sliders',
   'Rot': 'Red',
   'Grün': 'Green',
   'Blau': 'Blue',
