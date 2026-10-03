@@ -25,9 +25,18 @@ export const LINK_QUEUE_MAX = 20;
 /** So lange wartet ein Link auf Geräte, die noch verbinden (Kaltstart). */
 export const CONNECT_WAIT_MS = 8000;
 const POLL_MS = 200;
+/** So viele Zeichen eines Links kommen höchstens ins Protokoll. */
+const LOG_URL_MAX = 200;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const reachable = (d: DeviceSnapshot) => d.status === 'online' && !!d.state;
+
+/** Protokollzeile: Links kommen von außen, deshalb gekürzt und ohne Steuerzeichen (Zeilenumbrüche usw.). */
+function logLine(url: string, result: string): string {
+  const text = String(url);
+  const shown = text.length > LOG_URL_MAX ? `${text.slice(0, LOG_URL_MAX - 1)}…` : text;
+  return `${shown} → ${result}`.replace(/[\u0000-\u001f\u007f]/g, '?');
+}
 
 export class LinkRunner {
   private pending = 0;
@@ -62,28 +71,39 @@ export class LinkRunner {
       error = err instanceof Error ? err.message : String(err);
     }
     if (error) this.report(url, error);
-    else this.deps.log(`${url} → ok`);
+    else this.safe(() => this.deps.log(logLine(url, 'ok')));
   }
 
   private report(url: string, error: string): void {
-    this.deps.notify(error);
-    this.deps.log(`${url} → ${error}`);
+    this.safe(() => this.deps.notify(error));
+    this.safe(() => this.deps.log(logLine(url, error)));
+  }
+
+  /** Meldung und Protokoll sind Beiwerk: Wirft eines davon, läuft der Runner trotzdem weiter. */
+  private safe(fn: () => void): void {
+    try {
+      fn();
+    } catch {
+      // bewusst verschluckt
+    }
   }
 
   private async execute(url: string): Promise<string | null> {
+    // Ein gemeinsames Zeitbudget pro Link: Auflösen der Namen und Warten auf Geräte teilen sich die 8 s.
+    const deadline = Date.now() + CONNECT_WAIT_MS;
     if (!this.deps.allowed()) return t('Links sind ausgeschaltet — einschalten in den App-Einstellungen.');
     const cmd = parseLink(url);
     if ('error' in cmd) return cmd.error;
-    const target = await this.resolve(cmd.target);
+    const target = await this.resolve(cmd.target, deadline);
     if ('error' in target) return target.error;
     let sourceId: string | undefined;
     if (cmd.action.type === 'lookFrom') {
-      const src = await this.resolve({ kind: 'device', name: cmd.action.source });
+      const src = await this.resolve({ kind: 'device', name: cmd.action.source }, deadline);
       if ('error' in src) return src.error;
       sourceId = src.ids[0];
     }
     const needsNames = cmd.action.type !== 'power' && cmd.action.type !== 'brightness';
-    await this.waitReady(sourceId ? [...target.ids, sourceId] : target.ids, needsNames);
+    await this.waitReady(sourceId ? [...target.ids, sourceId] : target.ids, needsNames, deadline);
     const all = this.deps.devices();
     const members = target.ids.map((id) => all.find((d) => d.id === id)).filter((d): d is DeviceSnapshot => !!d);
     if (!members.some(reachable)) return t('Kein Gerät erreichbar');
@@ -91,22 +111,22 @@ export class LinkRunner {
   }
 
   /** Name → Geräte; beim Kaltstart kennt die App manche Namen erst, wenn die Geräte verbunden sind. */
-  private async resolve(target: LinkTarget): Promise<{ ids: string[] } | { error: string }> {
+  private async resolve(target: LinkTarget, deadline: number): Promise<{ ids: string[] } | { error: string }> {
     const first = resolveTarget(target, this.deps.devices(), this.deps.groups());
     if (!('error' in first) || !this.deps.devices().some((d) => d.status === 'connecting')) return first;
     await this.waitReady(
       this.deps.devices().map((d) => d.id),
       false,
+      deadline,
     );
     return resolveTarget(target, this.deps.devices(), this.deps.groups());
   }
 
   /**
-   * Wartet bis zu CONNECT_WAIT_MS, solange Geräte noch verbinden oder (bei Aussehen) ihre Namenslisten fehlen.
+   * Wartet bis zur Frist, solange Geräte noch verbinden oder (bei Aussehen) ihre Namenslisten fehlen.
    * Geräte, die offline sind, halten nicht auf — sonst würde ein fehlendes Gruppenmitglied jeden Link verzögern.
    */
-  private async waitReady(ids: string[], needsNames: boolean): Promise<void> {
-    const end = Date.now() + CONNECT_WAIT_MS;
+  private async waitReady(ids: string[], needsNames: boolean, deadline: number): Promise<void> {
     const ready = () => {
       const all = this.deps.devices();
       return ids.every((id) => {
@@ -115,7 +135,7 @@ export class LinkRunner {
         return reachable(d) && (!needsNames || !!this.deps.staticOf(id));
       });
     };
-    while (!ready() && Date.now() < end) await sleep(POLL_MS);
+    while (!ready() && Date.now() < deadline) await sleep(POLL_MS);
   }
 
   private async apply(cmd: LinkCommand, members: DeviceSnapshot[], source?: DeviceSnapshot): Promise<string | null> {

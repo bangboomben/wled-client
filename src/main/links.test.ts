@@ -182,4 +182,105 @@ describe('LinkRunner', () => {
     expect(deps.applyAll).toHaveBeenCalledTimes(LINK_QUEUE_MAX);
     expect(deps.send).not.toHaveBeenCalled();
   });
+
+  it('wartet auf ein verbindendes Gerät, dessen Name schon bekannt ist', async () => {
+    vi.useFakeTimers();
+    const { runner, deps, setDevices } = setup([dev('a', { status: 'connecting' })]);
+    runner.handle('wled-client://device/Lampe%20a/on');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(deps.send).not.toHaveBeenCalled();
+    setDevices([dev('a', { on: false })]);
+    await vi.advanceTimersByTimeAsync(400);
+    await runner.idle();
+    expect(deps.send.mock.calls).toEqual([['a', { on: true }]]);
+  });
+
+  it('wartet, bis die Namenslisten da sind, bevor es Farbe oder Effekt anwendet', async () => {
+    vi.useFakeTimers();
+    const { runner, deps } = setup([dev('a')]);
+    deps.staticOf.mockImplementation(() => null);
+    runner.handle('wled-client://all/color/ff0000');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(deps.applyAll).not.toHaveBeenCalled();
+    deps.staticOf.mockImplementation(() => ST);
+    await vi.advanceTimersByTimeAsync(400);
+    await runner.idle();
+    expect(deps.applyAll.mock.calls).toEqual([[{ kind: 'solid', color: [255, 0, 0] }, ['a']]]);
+  });
+
+  it('startet den zweiten Link erst, wenn der erste fertig ist', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const { runner, deps } = setup([dev('a')]);
+    deps.applyAll.mockImplementationOnce(async (_a, ids) => {
+      await gate;
+      return ids.map((id) => ({ id, ok: true }));
+    });
+    runner.handle('wled-client://all/effect/Rainbow');
+    runner.handle('wled-client://all/effect/Rainbow');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(deps.applyAll).toHaveBeenCalledTimes(1);
+    release();
+    await runner.idle();
+    expect(deps.applyAll).toHaveBeenCalledTimes(2);
+  });
+
+  it('läuft weiter, wenn notify wirft', async () => {
+    const { runner, deps } = setup([dev('a')]);
+    deps.notify.mockImplementationOnce(() => {
+      throw new Error('Tray nicht erreichbar');
+    });
+    runner.handle('wled-client://device/Nix/off');
+    runner.handle('wled-client://all/off');
+    await runner.idle();
+    expect(deps.send.mock.calls).toEqual([['a', { on: false }]]);
+    expect(deps.log).toHaveBeenCalledWith('wled-client://device/Nix/off → Gerät „Nix“ gibt es nicht');
+  });
+
+  it('läuft weiter, wenn log wirft', async () => {
+    const { runner, deps } = setup([dev('a')]);
+    deps.log.mockImplementationOnce(() => {
+      throw new Error('stderr geschlossen');
+    });
+    runner.handle('wled-client://all/off');
+    runner.handle('wled-client://all/on');
+    await runner.idle();
+    expect(deps.send.mock.calls).toEqual([
+      ['a', { on: false }],
+      ['a', { on: true }],
+    ]);
+  });
+
+  it('schreibt keine Zeilenumbrüche aus dem Link ins Protokoll', async () => {
+    const { runner, deps } = setup([dev('a')]);
+    runner.handle('wled-client://device/A\nB/off');
+    await runner.idle();
+    expect(deps.log).toHaveBeenCalledTimes(1);
+    const line = deps.log.mock.calls[0][0];
+    expect(line).not.toMatch(/[\u0000-\u001f\u007f]/);
+    expect(line).toContain('wled-client://device/A?B/off');
+  });
+
+  it('kürzt sehr lange Links im Protokoll', async () => {
+    const { runner, deps } = setup([dev('a')]);
+    const url = `wled-client://device/${'x'.repeat(300)}/off`;
+    runner.handle(url);
+    await runner.idle();
+    expect(deps.log).toHaveBeenCalledTimes(1);
+    const shown = deps.log.mock.calls[0][0].split(' → ')[0];
+    expect(shown.length).toBeLessThanOrEqual(200);
+    expect(shown.startsWith('wled-client://device/xxx')).toBe(true);
+  });
+
+  it('wartet pro Link insgesamt höchstens 8 s, auch wenn erst das Auflösen und dann das Gerät wartet', async () => {
+    vi.useFakeTimers();
+    // „Lampe a“ verbindet für immer; „Lampe b“ meldet sich erst nach 7 s, also kurz vor Ablauf des Wartens.
+    const { runner, deps, setDevices } = setup([dev('a', { status: 'connecting' }), dev('b', { name: '192.0.2.11', status: 'connecting' })]);
+    runner.handle('wled-client://device/Lampe%20a/look-from/Lampe%20b');
+    await vi.advanceTimersByTimeAsync(7000);
+    setDevices([dev('a', { status: 'connecting' }), dev('b')]);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(deps.notify).toHaveBeenCalledWith('Kein Gerät erreichbar');
+    expect(deps.copyLook).not.toHaveBeenCalled();
+  });
 });
