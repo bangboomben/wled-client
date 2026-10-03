@@ -206,6 +206,10 @@ const openLink = (dataDir, url) =>
       clearTimeout(timer);
       resolve();
     });
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      reject(new Error(`zweiter Start nicht möglich: ${url} (${err.message})`));
+    });
   });
 console.log('  Mock läuft, starte App …');
 const app = await launch(userData);
@@ -867,8 +871,9 @@ try {
     }, 'Bedroom hat den Look von Mock Desk', 8000);
     const n = linkLog.length;
     await openLink(userData, 'wled-client://device/Unbekannt/off');
-    await waitFor(() => linkLog.length > n, 'Protokollzeile zum unbekannten Namen', 8000);
-    expect(linkLog.at(-1).includes('Gerät „Unbekannt“ gibt es nicht'), `Protokoll: ${linkLog.at(-1)}`);
+    await waitFor(() => linkLog.slice(n).some((l) => l.includes('Unbekannt')), 'Protokollzeile zum unbekannten Namen', 8000);
+    const unknownLine = linkLog.slice(n).find((l) => l.includes('Unbekannt'));
+    expect(unknownLine.includes('Gerät „Unbekannt“ gibt es nicht'), `Protokoll: ${unknownLine}`);
   });
 
   await step('App lässt sich beenden', async () => {
@@ -904,6 +909,11 @@ await step('Kaltstart per Link: App startet unsichtbar und führt den Link aus',
   const cold = await launch(fresh, ['wled-client://device/Mock%20Desk/off']);
   try {
     await waitFor(async () => !(await state(PORTS.desk)).on, 'Desk aus per Kaltstart-Link', 15000);
+    // Erst prüfen, wenn die Oberfläche gerendert hat: Ein Fenster, das sich zeigen wollte, wäre jetzt längst sichtbar.
+    await waitFor(() => cold.windows().some((w) => w.url().includes('index.html')), 'Hauptfenster geladen', 15000);
+    const coldWin = cold.windows().find((w) => w.url().includes('index.html'));
+    await coldWin.waitForFunction(() => document.querySelectorAll('.device-row').length === 1, null, { timeout: 15000 });
+    await new Promise((r) => setTimeout(r, 500));
     const visible = await cold.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().some((w) => w.isVisible() && w.webContents.getURL().includes('index.html')),
     );
