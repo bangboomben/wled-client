@@ -34,6 +34,12 @@
     "appId": "io.github.bangboomben.wled-client",
     "productName": "WLED Client",
     "copyright": "Copyright © 2026 bangboomben",
+    "protocols": [
+      {
+        "name": "WLED Client",
+        "schemes": ["wled-client"]
+      }
+    ],
     "directories": {
       "output": "release",
       "buildResources": "resources"

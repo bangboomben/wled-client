@@ -7,6 +7,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import electronPath from 'electron';
 import { _electron as electron } from 'playwright-core';
 
 const arg = (name) => {
@@ -168,9 +169,10 @@ const waitFor = async (fn, msg, timeout = 4000) => {
 
 // mDNS-Anfragen gehen an den Mock statt ins Netzwerk
 const mainErrors = [];
-const launch = async (dataDir) => {
+const linkLog = [];
+const launch = async (dataDir, extraArgs = []) => {
   const electronApp = await electron.launch({
-    ...(EXE ? { executablePath: path.resolve(EXE), args: [] } : { args: ['.'] }),
+    ...(EXE ? { executablePath: path.resolve(EXE), args: [...extraArgs] } : { args: ['.', ...extraArgs] }),
     env: {
       ...process.env,
       WLED_CLIENT_USER_DATA: dataDir,
@@ -184,9 +186,27 @@ const launch = async (dataDir) => {
   electronApp.process().stderr?.on('data', (d) => {
     process.stderr.write(`  [app] ${d}`);
     if (String(d).includes('Unerwarteter Fehler im Hauptprozess')) mainErrors.push(String(d).trim().split('\n')[0]);
+    for (const line of String(d).split('\n')) if (line.startsWith('[link] ')) linkLog.push(line.slice(7).trim());
   });
   return electronApp;
 };
+
+/** Öffnet einen Link wie Windows: zweiter Start mit demselben Profil, der ihn an die laufende App weiterreicht und endet. */
+const openLink = (dataDir, url) =>
+  new Promise((resolve, reject) => {
+    const proc = spawn(EXE ? path.resolve(EXE) : electronPath, EXE ? [url] : ['.', url], {
+      env: { ...process.env, WLED_CLIENT_USER_DATA: dataDir, WLED_CLIENT_MDNS_TARGET: `127.0.0.1:${MDNS_PORT}` },
+      stdio: 'ignore',
+    });
+    const timer = setTimeout(() => {
+      proc.kill();
+      reject(new Error(`zweiter Start endet nicht: ${url}`));
+    }, 15_000);
+    proc.on('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
 console.log('  Mock läuft, starte App …');
 const app = await launch(userData);
 console.log('  App gestartet');
@@ -802,6 +822,55 @@ try {
     lone.kill();
   });
 
+  await step('Links: ausgeschaltet bewirken sie nichts, ein Start ohne Link zeigt das Fenster', async () => {
+    await api(PORTS.desk, '/json/state', { on: true });
+    await api(PORTS.bedroom, '/json/state', { on: true });
+    const n = linkLog.length;
+    await openLink(userData, 'wled-client://group/E2E%20Gruppe/off');
+    await waitFor(() => linkLog.length > n, 'Protokollzeile zum Link', 8000);
+    expect(linkLog.at(-1).includes('Links sind ausgeschaltet'), `Protokoll: ${linkLog.at(-1)}`);
+    expect((await state(PORTS.desk)).on && (await state(PORTS.bedroom)).on, 'Link hat trotzdem geschaltet');
+    // Zweiter Start ohne Link: Fenster wie bisher zeigen
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('index.html'))?.hide());
+    await openLink(userData, '--kein-link');
+    await waitFor(
+      () => app.evaluate(({ BrowserWindow }) => !!BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('index.html'))?.isVisible()),
+      'Fenster sichtbar nach zweitem Start',
+      8000,
+    );
+  });
+
+  await step('Links: Gruppe aus, Helligkeit, Farbe, Look übertragen, unbekannter Name', async () => {
+    await win.evaluate(() => window.wled.setSettings({ allowLinks: true }));
+    await openLink(userData, 'wled-client://group/E2E%20Gruppe/off');
+    await waitFor(async () => !(await state(PORTS.desk)).on && !(await state(PORTS.bedroom)).on, 'Gruppe aus', 8000);
+    await openLink(userData, 'wled-client://device/Mock%20Desk/brightness/50');
+    await waitFor(async () => {
+      const s = await state(PORTS.desk);
+      return s.on && s.bri === 128;
+    }, 'Desk an mit 50 %', 8000);
+    const eff = await api(PORTS.desk, '/json/eff');
+    await openLink(userData, 'wled-client://group/e2e%20gruppe/color/ff0000');
+    await waitFor(async () => {
+      for (const p of [PORTS.desk, PORTS.bedroom]) {
+        const g = (await state(p)).seg[0];
+        if (g.fx !== eff.indexOf('Solid') || g.col[0].slice(0, 3).join() !== '255,0,0') return false;
+      }
+      return true;
+    }, 'Gruppe Solid in Rot', 8000);
+    await api(PORTS.desk, '/json/state', { seg: [{ id: 0, fx: eff.indexOf('Rainbow'), sx: 99 }] });
+    await mainSeg('dev-desk', (s) => s.fx === eff.indexOf('Rainbow') && s.sx === 99, 'Desk-Look im Hauptprozess');
+    await openLink(userData, 'wled-client://device/Mock%20Bedroom/look-from/Mock%20Desk');
+    await waitFor(async () => {
+      const g = (await state(PORTS.bedroom)).seg[0];
+      return g.fx === eff.indexOf('Rainbow') && g.sx === 99;
+    }, 'Bedroom hat den Look von Mock Desk', 8000);
+    const n = linkLog.length;
+    await openLink(userData, 'wled-client://device/Unbekannt/off');
+    await waitFor(() => linkLog.length > n, 'Protokollzeile zum unbekannten Namen', 8000);
+    expect(linkLog.at(-1).includes('Gerät „Unbekannt“ gibt es nicht'), `Protokoll: ${linkLog.at(-1)}`);
+  });
+
   await step('App lässt sich beenden', async () => {
     expect(await closeApp(app, 'Hauptlauf'), 'App reagiert nicht auf Beenden');
   });
@@ -823,6 +892,25 @@ await step('Erster Start übernimmt die Geräte aus der mDNS-Suche', async () =>
     expect(await closeApp(first, 'Erster Start'), 'App reagiert nicht auf Beenden');
   } finally {
     await closeApp(first, 'Erster Start');
+    removeDir(fresh);
+  }
+});
+await step('Kaltstart per Link: App startet unsichtbar und führt den Link aus', async () => {
+  const fresh = mkdtempSync(path.join(tmpdir(), 'wled-client-link-'));
+  // Ohne gespeicherten Namen: Die App kennt „Mock Desk“ erst nach dem Verbinden.
+  writeFileSync(path.join(fresh, 'devices.json'), JSON.stringify([{ id: 'dev-desk', host: `127.0.0.1:${PORTS.desk}` }]));
+  writeFileSync(path.join(fresh, 'settings.json'), JSON.stringify({ theme: 'dark', trayHintShown: true, language: 'de', allowLinks: true }));
+  await api(PORTS.desk, '/json/state', { on: true });
+  const cold = await launch(fresh, ['wled-client://device/Mock%20Desk/off']);
+  try {
+    await waitFor(async () => !(await state(PORTS.desk)).on, 'Desk aus per Kaltstart-Link', 15000);
+    const visible = await cold.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().some((w) => w.isVisible() && w.webContents.getURL().includes('index.html')),
+    );
+    expect(!visible, 'Hauptfenster ist sichtbar');
+    expect(await closeApp(cold, 'Kaltstart'), 'App reagiert nicht auf Beenden');
+  } finally {
+    await closeApp(cold, 'Kaltstart');
     removeDir(fresh);
   }
 });

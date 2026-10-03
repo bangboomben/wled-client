@@ -423,4 +423,7 @@ export const EN: Record<string, string> = {
   'Presets noch nicht geladen': 'Presets not loaded yet',
   'Preset „{name}“ gibt es dort nicht': 'No preset “{name}” there',
   'Quelle und Ziel sind dasselbe Gerät': 'Source and target are the same device',
+  'Link: {reason}': 'Link: {reason}',
+  'Links von anderen Programmen erlauben': 'Allow links from other programs',
+  'Für Stream Deck und Automationen, z. B. {example}. Anleitung im README.': 'For Stream Deck and automations, e.g. {example}. See the README.',
 };
