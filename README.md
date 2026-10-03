@@ -88,10 +88,14 @@ Settings and the device list live in `%APPDATA%\WLED Client\`.
 - WLED controllers reachable from your PC — developed and tested against **WLED 16.0.1**. Recent 0.14/0.15
   releases speak the same JSON API and should work, but are untested so far — feedback welcome.
 
-## Links for Stream Deck and automations
+## Links for automations
 
 Turn on *Allow links from other programs* in the app settings. Then any program that can open a link controls your
 lights with `wled-client://<target>/<action>[/<value>]`. If the app isn't running, the link starts it in the tray.
+
+Links work one way: they switch, but can't show a light's state. For a Stream Deck key that mirrors a single light,
+a dedicated WLED Stream Deck plugin fits better. Links cover what such a plugin doesn't: your groups with proportional
+dimming, several steps on one key, and triggers outside the Stream Deck such as hotkeys or locking the PC.
 
 | Target | Meaning |
 |---|---|
@@ -115,9 +119,12 @@ Names are case-insensitive. Write spaces as `%20`, and `/`, `#` and `%` inside a
 Examples: `wled-client://group/Living%20room/toggle`, `wled-client://device/Desk/brightness/+10`,
 `wled-client://all/color/ffb060`.
 
-- **Stream Deck:** action *System › Open*, paste the link.
+- **Stream Deck:** action *System › Website*, the link as URL. For several steps on one key, put several of these into
+  a *Multi Action* (e.g. group on, then a color, then a brightness).
 - **AutoHotkey v2:** `Run "wled-client://all/off"`
-- **Task Scheduler:** program `explorer.exe`, argument `"wled-client://all/off"`
+- **Task Scheduler:** start the app itself with the link as argument — program
+  `%LOCALAPPDATA%\Programs\WLED Client\WLED Client.exe` (default per-user install), argument `wled-client://all/off`.
+  Triggers such as *On workstation lock* and *On workstation unlock* switch the lights with the PC.
 
 Errors (unknown name, light not reachable) show up as a Windows notification. Links only change what you could change
 in the app — never the device configuration.
@@ -216,8 +223,8 @@ WLED-Weboberfläche kann (Farben, Effekte, Paletten, Segmente, Presets, Playlist
 Live-Vorschau). Mehrere Lampen lassen sich zu Gruppen zusammenfassen und gemeinsam schalten
 und dimmen. Ein Klick auf eine Gruppe zeigt ihre Lampen und setzt Farbe, Effekt oder Palette für alle auf einmal.
 Den Look einer Lampe (Effekt, Palette, Farben) überträgt „Übertragen“ auf andere Lampen oder Gruppen.
-Stream Deck und Automationen steuern die Lampen über Links wie `wled-client://group/Wohnzimmer/toggle`
-(in den App-Einstellungen einschalten).
+Automationen (Tastenkürzel, Aufgabenplanung, Stream Deck) steuern die Lampen über Links wie
+`wled-client://group/Wohnzimmer/toggle` (in den App-Einstellungen einschalten).
 Installer unter [Releases](https://github.com/bangboomben/wled-client/releases/latest),
 Installation ohne Administratorrechte. Die Oberfläche spricht Deutsch und Englisch, je nach Windows-Sprache.
 
