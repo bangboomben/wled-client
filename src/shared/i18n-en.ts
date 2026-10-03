@@ -417,4 +417,10 @@ export const EN: Record<string, string> = {
   'Gruppe „{name}“ gibt es nicht': 'No group named “{name}”',
   'Gerät „{name}“ gibt es nicht': 'No device named “{name}”',
   'Mehrere Geräte heißen „{name}“': 'Several devices are named “{name}”',
+  'Links sind ausgeschaltet — einschalten in den App-Einstellungen.': 'Links are turned off — turn them on in the app settings.',
+  'Zu viele Links auf einmal': 'Too many links at once',
+  'Kein Gerät erreichbar': 'No device reachable',
+  'Presets noch nicht geladen': 'Presets not loaded yet',
+  'Preset „{name}“ gibt es dort nicht': 'No preset “{name}” there',
+  'Quelle und Ziel sind dasselbe Gerät': 'Source and target are the same device',
 };

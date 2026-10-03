@@ -23,6 +23,7 @@ class AppStore {
     theme: 'system',
     language: 'system',
     autoUpdate: true,
+    allowLinks: false,
   };
   update: UpdateState = { status: 'unsupported', current: '' };
   scan: ScanProgress = { running: false, mode: 'discover', done: 0, total: 0, found: [] };

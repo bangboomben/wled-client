@@ -55,6 +55,11 @@ describe('cleanSettings', () => {
     expect(cleanSettings({ closeToTray: 'nein', liveView: 1 })).toEqual({});
   });
 
+  it('übernimmt allowLinks nur als Boolean', () => {
+    expect(cleanSettings({ allowLinks: true })).toEqual({ allowLinks: true });
+    expect(cleanSettings({ allowLinks: 'ja' })).toEqual({});
+  });
+
   it('übernimmt Design und Sprache nur mit erlaubten Werten', () => {
     expect(cleanSettings({ theme: 'dark', language: 'en' })).toEqual({ theme: 'dark', language: 'en' });
     expect(cleanSettings({ theme: 'light', language: 'system' })).toEqual({ theme: 'light', language: 'system' });
@@ -79,7 +84,7 @@ describe('cleanSettings', () => {
 
 describe('DEFAULT_SETTINGS', () => {
   it('hat die bisherigen Standardwerte', () => {
-    expect(DEFAULT_SETTINGS).toEqual({ closeToTray: true, startWithWindows: false, liveView: false, theme: 'system', language: 'system', autoUpdate: true });
+    expect(DEFAULT_SETTINGS).toEqual({ closeToTray: true, startWithWindows: false, liveView: false, theme: 'system', language: 'system', autoUpdate: true, allowLinks: false });
   });
 
   it('besteht die eigene Prüfung unverändert', () => {

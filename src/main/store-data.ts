@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   language: 'system',
   autoUpdate: true,
+  allowLinks: false,
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -38,7 +39,7 @@ export function cleanDevices(raw: unknown): DeviceConfig[] {
 export function cleanSettings(raw: unknown): Partial<AppSettings> {
   const out: Partial<AppSettings> = {};
   if (!isObj(raw)) return out;
-  for (const k of ['closeToTray', 'startWithWindows', 'liveView', 'autoUpdate', 'trayHintShown'] as const) {
+  for (const k of ['closeToTray', 'startWithWindows', 'liveView', 'autoUpdate', 'allowLinks', 'trayHintShown'] as const) {
     const v = raw[k];
     if (typeof v === 'boolean') out[k] = v;
   }
