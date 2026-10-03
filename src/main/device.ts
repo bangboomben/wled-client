@@ -204,6 +204,11 @@ export class DeviceConnection extends EventEmitter {
     return this.config.alias || this.info?.name || this.config.lastName || this.config.host;
   }
 
+  /** Presets sind angekommen: Bis dahin steht in `staticData.presets` nur ein leeres Gerüst (Effekte und Paletten kommen zuerst). */
+  get presetsLoaded(): boolean {
+    return !!this.staticData && !this.missing.presets;
+  }
+
   snapshot(): DeviceSnapshot {
     return {
       id: this.id,

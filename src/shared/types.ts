@@ -180,6 +180,8 @@ export interface AppSettings {
   theme: ThemeMode;
   language: LanguageSetting;
   autoUpdate: boolean;
+  /** Links wled-client://… von anderen Programmen ausführen (Stream Deck, Automationen). */
+  allowLinks: boolean;
   selectedId?: string;
   /** Gewählte Gruppe; leer oder fehlend = ein Gerät ist gewählt (selectedId). */
   selectedGroupId?: string;

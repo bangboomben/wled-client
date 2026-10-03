@@ -147,6 +147,14 @@ export function cleanAction(raw: unknown): GroupAction | null {
   return null;
 }
 
+/** Nummer eines Namens in einer Liste: erst genau, sonst ohne Rücksicht auf Groß-/Kleinschreibung (Links werden von Hand getippt). */
+function indexOfName(list: string[], name: string): number {
+  const exact = list.indexOf(name);
+  if (exact >= 0) return exact;
+  const lower = name.toLowerCase();
+  return list.findIndex((n) => n.toLowerCase() === lower);
+}
+
 /**
  * Befehl für ein Mitglied: Schnellfarbe (Effekt „Solid“ und Farbe 1, Weiß aus), Effekt oder Palette auf alle
  * Segmente — oder der Grund, warum es unverändert bleibt. Nie Helligkeit oder An/Aus.
@@ -154,12 +162,12 @@ export function cleanAction(raw: unknown): GroupAction | null {
 export function actionPatch(action: GroupAction, state: WledState, st: DeviceStatic | null): { patch: Record<string, unknown> } | { reason: string } {
   if (!st) return { reason: t('Effektliste noch nicht geladen') };
   if (action.kind === 'palette') {
-    const pal = st.palettes.indexOf(action.name);
+    const pal = indexOfName(st.palettes, action.name);
     if (pal < 0) return { reason: t('Palette „{name}“ gibt es dort nicht', { name: action.name }) };
     return { patch: { seg: state.seg.map((s) => ({ id: s.id, pal })) } };
   }
   const name = action.kind === 'solid' ? SOLID : action.name;
-  const fx = st.effects.indexOf(name);
+  const fx = indexOfName(st.effects, name);
   if (fx < 0) return { reason: t('Effekt „{name}“ gibt es dort nicht', { name }) };
   if (action.kind === 'effect') return { patch: { seg: state.seg.map((s) => ({ id: s.id, fx })) } };
   const [r, g, b] = action.color;

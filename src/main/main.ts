@@ -21,6 +21,7 @@ import type { AppSettings, DeviceGroup, DevicePage, DeviceSnapshot, ScanResult, 
 import { DeviceManager } from './devices';
 import { Scanner, localSubnets } from './discovery';
 import { GroupManager } from './groups';
+import { LinkRunner } from './links';
 import { Store } from './store';
 import { cleanSettings } from './store-data';
 import { Updater } from './updater';
@@ -37,7 +38,11 @@ const DEV_URL = app.isPackaged ? undefined : process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIR = path.join(__dirname, '../dist/renderer');
 const RESOURCES = path.join(__dirname, '../resources');
 const PRELOAD = path.join(__dirname, 'preload.cjs');
-const startHidden = process.argv.includes('--hidden');
+/** Link aus der Befehlszeile — Windows übergibt ihn beim Öffnen von wled-client://… */
+const linkArg = (argv: string[]) => argv.find((a) => /^wled-client:/i.test(a));
+const startLink = linkArg(process.argv);
+// Ein Link startet die App unsichtbar: Er soll schalten, nicht das Fenster öffnen.
+const startHidden = process.argv.includes('--hidden') || !!startLink;
 
 const FLYOUT_WIDTH = 344;
 const THEME = {
@@ -63,6 +68,7 @@ const PAGE_PATHS: Record<DevicePage, [string, string]> = {
 
 let store: Store;
 let manager: DeviceManager;
+let links: LinkRunner | undefined;
 let groups: GroupManager;
 let updater: Updater;
 const scanner = new Scanner();
@@ -569,7 +575,11 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.setAppUserModelId('io.github.bangboomben.wled-client');
-  app.on('second-instance', () => showMain());
+  app.on('second-instance', (_e, argv) => {
+    const link = linkArg(argv);
+    if (link) links?.handle(link);
+    else showMain();
+  });
   app.on('before-quit', () => {
     quitting = true;
     store?.flush();
@@ -621,6 +631,20 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     manager.init();
     createTray();
+    links = new LinkRunner({
+      allowed: () => !!store.getSettings().allowLinks,
+      devices: () => manager.list(),
+      groups: () => groups.list(),
+      staticOf: (id) => manager.get(id)?.staticData ?? null,
+      presetsReady: (id) => manager.get(id)?.presetsLoaded ?? false,
+      // Bestätigt und still: Der Link meldet einen Fehlschlag selbst im Hinweis, das versteckte Fenster soll keinen Toast zeigen.
+      send: (id, patch) => manager.send(id, patch, undefined, true, true),
+      applyAll: (action, ids) => manager.applyAll(action, ids),
+      copyLook: (look, ids) => manager.copyLook(look, ids),
+      notify: (message) => tray?.displayBalloon({ iconType: 'warning', title: 'WLED Client', content: t('Link: {reason}', { reason: message }) }),
+      log: (line) => process.stderr.write(`[link] ${line}\n`),
+    });
+    if (startLink) links.handle(startLink);
     mainWin = createMainWindow();
     flyoutWin = createFlyout();
     if (store.firstRun && manager.size === 0) {

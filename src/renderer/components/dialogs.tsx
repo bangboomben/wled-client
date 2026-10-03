@@ -463,6 +463,13 @@ export function AppSettingsDialog({ onClose }: { onClose: () => void }) {
         </div>
         <Toggle checked={s.liveView} label={t('Live-Vorschau')} onChange={(v) => set({ liveView: v })} />
       </div>
+      <div className="setting-row">
+        <div>
+          <strong>{t('Links von anderen Programmen erlauben')}</strong>
+          <p className="muted small">{t('Für Stream Deck und Automationen, z. B. {example}. Anleitung im README.', { example: 'wled-client://all/toggle' })}</p>
+        </div>
+        <Toggle checked={s.allowLinks} label={t('Links von anderen Programmen erlauben')} onChange={(v) => set({ allowLinks: v })} />
+      </div>
       <UpdateSettings autoUpdate={s.autoUpdate} onAutoUpdate={(v) => set({ autoUpdate: v })} />
     </Modal>
   );
