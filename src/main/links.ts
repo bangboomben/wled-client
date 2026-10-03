@@ -6,14 +6,16 @@ import { t } from '../shared/i18n';
 import { findPreset, parseLink, planBrightness, resolveTarget, type LinkCommand, type LinkTarget } from '../shared/links';
 import { failureSummary, lookFrom, type CopyResult, type GroupAction, type Look } from '../shared/look';
 import { viewSeg } from '../shared/segments';
-import type { DeviceGroup, DeviceSnapshot, DeviceStatic } from '../shared/types';
+import type { CommandResult, DeviceGroup, DeviceSnapshot, DeviceStatic } from '../shared/types';
 
 export interface LinkDeps {
   allowed(): boolean;
   devices(): DeviceSnapshot[];
   groups(): DeviceGroup[];
   staticOf(id: string): DeviceStatic | null;
-  send(id: string, patch: Record<string, unknown>): void;
+  /** Die Presets des Geräts sind geladen — `staticOf` liefert sie sonst nur als leeres Gerüst. */
+  presetsReady(id: string): boolean;
+  send(id: string, patch: Record<string, unknown>): Promise<CommandResult>;
   applyAll(action: GroupAction, ids: string[]): Promise<CopyResult[]>;
   copyLook(look: Look, ids: string[]): Promise<CopyResult[]>;
   notify(message: string): void;
@@ -102,8 +104,8 @@ export class LinkRunner {
       if ('error' in src) return src.error;
       sourceId = src.ids[0];
     }
-    const needsNames = cmd.action.type !== 'power' && cmd.action.type !== 'brightness';
-    await this.waitReady(sourceId ? [...target.ids, sourceId] : target.ids, needsNames, deadline);
+    const need = cmd.action.type === 'power' || cmd.action.type === 'brightness' ? 'connect' : cmd.action.type === 'preset' ? 'presets' : 'names';
+    await this.waitReady(sourceId ? [...target.ids, sourceId] : target.ids, need, deadline);
     const all = this.deps.devices();
     const members = target.ids.map((id) => all.find((d) => d.id === id)).filter((d): d is DeviceSnapshot => !!d);
     if (!members.some(reachable)) return t('Kein Gerät erreichbar');
@@ -116,26 +118,46 @@ export class LinkRunner {
     if (!('error' in first) || !this.deps.devices().some((d) => d.status === 'connecting')) return first;
     await this.waitReady(
       this.deps.devices().map((d) => d.id),
-      false,
+      'connect',
       deadline,
     );
     return resolveTarget(target, this.deps.devices(), this.deps.groups());
   }
 
   /**
-   * Wartet bis zur Frist, solange Geräte noch verbinden oder (bei Aussehen) ihre Namenslisten fehlen.
-   * Geräte, die offline sind, halten nicht auf — sonst würde ein fehlendes Gruppenmitglied jeden Link verzögern.
+   * Wartet bis zur Frist, solange Geräte noch verbinden oder (bei Aussehen) ihre Namenslisten fehlen, bei Presets
+   * auch diese. Geräte, die offline sind, halten nicht auf — sonst würde ein fehlendes Gruppenmitglied jeden Link verzögern.
    */
-  private async waitReady(ids: string[], needsNames: boolean, deadline: number): Promise<void> {
+  private async waitReady(ids: string[], need: 'connect' | 'names' | 'presets', deadline: number): Promise<void> {
     const ready = () => {
       const all = this.deps.devices();
       return ids.every((id) => {
         const d = all.find((x) => x.id === id);
         if (!d || d.status === 'offline') return true;
-        return reachable(d) && (!needsNames || !!this.deps.staticOf(id));
+        if (!reachable(d)) return false;
+        if (need === 'connect') return true;
+        return !!this.deps.staticOf(id) && (need === 'names' || this.deps.presetsReady(id));
       });
     };
     while (!ready() && Date.now() < deadline) await sleep(POLL_MS);
+  }
+
+  /**
+   * Schickt die Befehle eines Links und wartet auf alle. Fehlschläge kommen wie bei Aussehen-Links in einem Hinweis —
+   * sonst sähe der Link im Protokoll „ok“ aus, obwohl ein Gerät nichts bekam.
+   */
+  private async deliver(sends: { id: string; patch: Record<string, unknown> }[], nameOf: (id: string) => string): Promise<string | null> {
+    const results = await Promise.all(
+      sends.map(async ({ id, patch }): Promise<CopyResult> => {
+        const sent = await this.deps.send(id, patch);
+        if (sent.ok) return { id, ok: true };
+        // Die Fehlermeldung beginnt mit dem Gerätenamen; er steht in der Zusammenfassung bereits davor.
+        const prefix = `${nameOf(id)}: `;
+        const error = sent.error?.startsWith(prefix) ? sent.error.slice(prefix.length) : sent.error;
+        return { id, ok: false, reason: error || t('Übertragen fehlgeschlagen') };
+      }),
+    );
+    return failureSummary(results, nameOf);
   }
 
   private async apply(cmd: LinkCommand, members: DeviceSnapshot[], source?: DeviceSnapshot): Promise<string | null> {
@@ -145,19 +167,17 @@ export class LinkRunner {
     switch (a.type) {
       case 'power': {
         const on = a.mode === 'toggle' ? !groupView(members).lit : a.mode === 'on';
-        for (const id of powerTargets(members)) this.deps.send(id, { on });
-        return null;
+        return this.deliver(powerTargets(members).map((id) => ({ id, patch: { on } })), nameOf);
       }
       case 'brightness':
-        for (const { id, bri } of planBrightness(members, a.value, a.relative)) this.deps.send(id, { bri });
-        return null;
+        return this.deliver(planBrightness(members, a.value, a.relative).map(({ id, bri }) => ({ id, patch: { bri } })), nameOf);
       case 'preset': {
         const st = this.deps.staticOf(ids[0]);
-        if (!st) return t('Presets noch nicht geladen');
+        // Auch nach der Frist nicht „gibt es dort nicht“ melden, solange die Liste nur ein leeres Gerüst ist.
+        if (!st || !this.deps.presetsReady(ids[0])) return t('Presets noch nicht geladen');
         const ps = findPreset(st.presets, a.ref);
         if (ps === null) return t('Preset „{name}“ gibt es dort nicht', { name: a.ref });
-        this.deps.send(ids[0], { ps });
-        return null;
+        return this.deliver([{ id: ids[0], patch: { ps } }], nameOf);
       }
       case 'color':
       case 'effect':

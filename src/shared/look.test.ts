@@ -190,6 +190,28 @@ describe('actionPatch', () => {
     });
   });
 
+  it('findet Effekt und Palette ohne Rücksicht auf Groß-/Kleinschreibung', () => {
+    expect(actionPatch({ kind: 'effect', name: 'rainbow' }, targetState, SOLID_ELSEWHERE)).toEqual({
+      patch: { seg: [{ id: 0, fx: 2 }, { id: 3, fx: 2 }] },
+    });
+    expect(actionPatch({ kind: 'palette', name: 'DEFAULT' }, targetState, SOLID_ELSEWHERE)).toEqual({
+      patch: { seg: [{ id: 0, pal: 1 }, { id: 3, pal: 1 }] },
+    });
+  });
+
+  it('nimmt den genauen Namen vor dem, der sich nur in der Schreibweise unterscheidet', () => {
+    const both: DeviceStatic = { effects: ['Solid', 'rainbow', 'Rainbow'], palettes: ['party', 'Party'], fxdata: [], presets: {} };
+    expect(actionPatch({ kind: 'effect', name: 'Rainbow' }, targetState, both)).toEqual({ patch: { seg: [{ id: 0, fx: 2 }, { id: 3, fx: 2 }] } });
+    expect(actionPatch({ kind: 'palette', name: 'Party' }, targetState, both)).toEqual({ patch: { seg: [{ id: 0, pal: 1 }, { id: 3, pal: 1 }] } });
+    // Ohne genauen Treffer gewinnt der erste, der sich nur in der Schreibweise unterscheidet.
+    expect(actionPatch({ kind: 'effect', name: 'RAINBOW' }, targetState, both)).toEqual({ patch: { seg: [{ id: 0, fx: 1 }, { id: 3, fx: 1 }] } });
+  });
+
+  it('nennt den Namen, wie er getippt wurde, wenn es ihn auch ohne Rücksicht auf die Schreibweise nicht gibt', () => {
+    expect(actionPatch({ kind: 'effect', name: 'aurora' }, targetState, SOLID_ELSEWHERE)).toEqual({ reason: 'Effekt „aurora“ gibt es dort nicht' });
+    expect(actionPatch({ kind: 'palette', name: 'sunset' }, targetState, SOLID_ELSEWHERE)).toEqual({ reason: 'Palette „sunset“ gibt es dort nicht' });
+  });
+
   it('nennt die Gründe', () => {
     expect(actionPatch({ kind: 'effect', name: 'Rainbow' }, targetState, null)).toEqual({ reason: 'Effektliste noch nicht geladen' });
     expect(actionPatch({ kind: 'solid', color: [1, 2, 3] }, targetState, { ...SOLID_ELSEWHERE, effects: ['Blink'] })).toEqual({

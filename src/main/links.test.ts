@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CopyResult, GroupAction, Look } from '../shared/look';
-import type { DeviceGroup, DeviceSnapshot, DeviceStatic, WledState } from '../shared/types';
+import type { CommandResult, DeviceGroup, DeviceSnapshot, DeviceStatic, WledState } from '../shared/types';
 import { LINK_QUEUE_MAX, LinkRunner, type LinkDeps } from './links';
 
 /** Gerät mit einem Segment; „verbindet“ hat noch keinen Zustand. */
@@ -27,7 +27,8 @@ function setup(devices: DeviceSnapshot[], opts: { allowed?: boolean; groups?: De
     devices: () => list,
     groups: () => opts.groups ?? [],
     staticOf: vi.fn((_id: string): DeviceStatic | null => ST),
-    send: vi.fn((_id: string, _patch: Record<string, unknown>) => {}),
+    presetsReady: vi.fn((_id: string) => true),
+    send: vi.fn(async (_id: string, _patch: Record<string, unknown>): Promise<CommandResult> => ({ ok: true })),
     applyAll: vi.fn(async (_a: GroupAction, ids: string[]): Promise<CopyResult[]> => ids.map((id) => ({ id, ok: true }))),
     copyLook: vi.fn(async (_l: Look, ids: string[]): Promise<CopyResult[]> => ids.map((id) => ({ id, ok: true }))),
     notify: vi.fn((_m: string) => {}),
@@ -92,6 +93,64 @@ describe('LinkRunner', () => {
     await runner.idle();
     expect(deps.send.mock.calls).toEqual([['a', { ps: 3 }]]);
     expect(deps.notify).toHaveBeenCalledWith('Preset „Morgen“ gibt es dort nicht');
+  });
+
+  it('wartet beim Kaltstart, bis die Presets geladen sind, statt ein Preset als unbekannt zu melden', async () => {
+    vi.useFakeTimers();
+    const { runner, deps } = setup([dev('a')]);
+    // Wie beim Verbinden: Effekte und Paletten sind da, die Presets kommen erst danach.
+    let loaded = false;
+    setTimeout(() => (loaded = true), 400);
+    deps.staticOf.mockImplementation(() => (loaded ? ST : { ...ST, presets: {} }));
+    deps.presetsReady.mockImplementation(() => loaded);
+    runner.handle('wled-client://device/Lampe%20a/preset/abend');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(deps.send).not.toHaveBeenCalled();
+    expect(deps.notify).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(300);
+    await runner.idle();
+    expect(deps.send.mock.calls).toEqual([['a', { ps: 3 }]]);
+    expect(deps.notify).not.toHaveBeenCalled();
+    expect(deps.log).toHaveBeenCalledWith('wled-client://device/Lampe%20a/preset/abend → ok');
+  });
+
+  it('meldet „Presets noch nicht geladen“, wenn sie bis zur Frist nicht kommen — nicht „gibt es dort nicht“', async () => {
+    vi.useFakeTimers();
+    const { runner, deps } = setup([dev('a')]);
+    deps.staticOf.mockImplementation(() => ({ ...ST, presets: {} }));
+    deps.presetsReady.mockImplementation(() => false);
+    runner.handle('wled-client://device/Lampe%20a/preset/abend');
+    await vi.advanceTimersByTimeAsync(8200);
+    await runner.idle();
+    expect(deps.send).not.toHaveBeenCalled();
+    expect(deps.notify).toHaveBeenCalledTimes(1);
+    expect(deps.notify).toHaveBeenCalledWith('Presets noch nicht geladen');
+  });
+
+  it('meldet Fehlschläge beim Schalten mit Gerätenamen, ohne den Namen doppelt zu nennen', async () => {
+    const groups = [{ id: 'g', name: 'Abend', members: ['a', 'b', 'c'] }];
+    const { runner, deps } = setup([dev('a'), dev('b'), dev('c')], { groups });
+    deps.send.mockImplementation(async (id) => {
+      if (id === 'b') return { ok: false, error: 'Lampe b: Befehl kam nicht an (timeout)' };
+      if (id === 'c') return { ok: false, error: 'Verbindung beendet' };
+      return { ok: true };
+    });
+    runner.handle('wled-client://group/abend/off');
+    await runner.idle();
+    expect(deps.send).toHaveBeenCalledTimes(3);
+    const text = 'Nicht übernommen · Lampe b: Befehl kam nicht an (timeout) · Lampe c: Verbindung beendet';
+    expect(deps.notify).toHaveBeenCalledWith(text);
+    expect(deps.log).toHaveBeenCalledWith(`wled-client://group/abend/off → ${text}`);
+  });
+
+  it('meldet auch beim Dimmen und beim Preset, wenn der Befehl nicht ankam', async () => {
+    const { runner, deps } = setup([dev('a')]);
+    deps.send.mockResolvedValue({ ok: false, error: 'Lampe a: keine Bestätigung vom Gerät' });
+    runner.handle('wled-client://device/Lampe%20a/brightness/50');
+    runner.handle('wled-client://device/Lampe%20a/preset/abend');
+    await runner.idle();
+    const text = 'Nicht übernommen · Lampe a: keine Bestätigung vom Gerät';
+    expect(deps.notify.mock.calls).toEqual([[text], [text]]);
   });
 
   it('gibt Farbe, Effekt und Palette an applyAll weiter und meldet Fehlschläge', async () => {

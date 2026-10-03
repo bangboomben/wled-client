@@ -4,14 +4,14 @@ import type { DeviceGroup, DeviceSnapshot, WledState } from './types';
 
 describe('parseLink', () => {
   it('zerlegt Ziel und Schalt-Aktion', () => {
-    expect(parseLink('wled-client://device/Tisch/off')).toEqual({ target: { kind: 'device', name: 'Tisch' }, action: { type: 'power', mode: 'off' } });
-    expect(parseLink('wled-client:group/Am%20Bett/toggle/')).toEqual({ target: { kind: 'group', name: 'Am Bett' }, action: { type: 'power', mode: 'toggle' } });
+    expect(parseLink('wled-client://device/Regal/off')).toEqual({ target: { kind: 'device', name: 'Regal' }, action: { type: 'power', mode: 'off' } });
+    expect(parseLink('wled-client:group/Am%20Sofa/toggle/')).toEqual({ target: { kind: 'group', name: 'Am Sofa' }, action: { type: 'power', mode: 'toggle' } });
     expect(parseLink('WLED-CLIENT://ALL/ON')).toEqual({ target: { kind: 'all' }, action: { type: 'power', mode: 'on' } });
   });
 
   it('liest Helligkeit fest und schrittweise, Namen URL-dekodiert', () => {
-    expect(parseLink('wled-client://device/K%C3%BCche/brightness/50')).toEqual({
-      target: { kind: 'device', name: 'Küche' },
+    expect(parseLink('wled-client://device/Fl%C3%BCgel/brightness/50')).toEqual({
+      target: { kind: 'device', name: 'Flügel' },
       action: { type: 'brightness', value: 50, relative: false },
     });
     expect(parseLink('wled-client://all/brightness/+10')).toEqual({ target: { kind: 'all' }, action: { type: 'brightness', value: 10, relative: true } });
@@ -19,11 +19,11 @@ describe('parseLink', () => {
   });
 
   it('liest Preset, Farbe, Effekt, Palette und look-from', () => {
-    expect(parseLink('wled-client://device/Tisch/preset/Abend')).toEqual({ target: { kind: 'device', name: 'Tisch' }, action: { type: 'preset', ref: 'Abend' } });
+    expect(parseLink('wled-client://device/Regal/preset/Abend')).toEqual({ target: { kind: 'device', name: 'Regal' }, action: { type: 'preset', ref: 'Abend' } });
     expect(parseLink('wled-client://all/color/FF8000')).toEqual({ target: { kind: 'all' }, action: { type: 'color', color: [255, 128, 0] } });
     expect(parseLink('wled-client://group/Abend/effect/Rainbow')).toEqual({ target: { kind: 'group', name: 'Abend' }, action: { type: 'effect', name: 'Rainbow' } });
     expect(parseLink('wled-client://group/Abend/palette/Party')).toEqual({ target: { kind: 'group', name: 'Abend' }, action: { type: 'palette', name: 'Party' } });
-    expect(parseLink('wled-client://device/Bett/look-from/Tisch')).toEqual({ target: { kind: 'device', name: 'Bett' }, action: { type: 'lookFrom', source: 'Tisch' } });
+    expect(parseLink('wled-client://device/Sofa/look-from/Regal')).toEqual({ target: { kind: 'device', name: 'Sofa' }, action: { type: 'lookFrom', source: 'Regal' } });
   });
 
   it('lehnt kaputte Links ab', () => {
@@ -32,13 +32,13 @@ describe('parseLink', () => {
       'http://example/all/off',
       `wled-client://device/${'a'.repeat(600)}/off`,
       'wled-client://room/Abend/off',
-      'wled-client://device/Tisch',
+      'wled-client://device/Regal',
       'wled-client://all/off/mehr',
       'wled-client://all/brightness',
       'wled-client://all/effect/',
       'wled-client://device/%E0%A4%A/off',
       'wled-client://all/off//',
-      'wled-client://device/Tisch/off//',
+      'wled-client://device/Regal/off//',
     ]) {
       expect(parseLink(text)).toEqual(invalid);
     }
@@ -68,20 +68,20 @@ function dev(id: string, name: string, opts: { status?: DeviceSnapshot['status']
 }
 
 describe('resolveTarget', () => {
-  const devices = [dev('a', 'Tisch'), dev('b', 'Bett'), dev('c', 'Bett'), dev('d', 'Wand')];
+  const devices = [dev('a', 'Regal'), dev('b', 'Sofa'), dev('c', 'Sofa'), dev('d', 'Fenster')];
   const groups: DeviceGroup[] = [
     { id: 'g', name: 'Abend', members: ['d', 'a'] },
     { id: 'h', name: 'Leer', members: [] },
   ];
 
   it('findet Geräte und Gruppen ohne Rücksicht auf Groß-/Kleinschreibung', () => {
-    expect(resolveTarget({ kind: 'device', name: 'tisch' }, devices, groups)).toEqual({ ids: ['a'] });
+    expect(resolveTarget({ kind: 'device', name: 'regal' }, devices, groups)).toEqual({ ids: ['a'] });
     expect(resolveTarget({ kind: 'group', name: 'ABEND' }, devices, groups)).toEqual({ ids: ['a', 'd'] });
     expect(resolveTarget({ kind: 'all' }, devices, groups)).toEqual({ ids: ['a', 'b', 'c', 'd'] });
   });
 
   it('nennt den Grund, wenn es nicht eindeutig klappt', () => {
-    expect(resolveTarget({ kind: 'device', name: 'Bett' }, devices, groups)).toEqual({ error: 'Mehrere Geräte heißen „Bett“' });
+    expect(resolveTarget({ kind: 'device', name: 'Sofa' }, devices, groups)).toEqual({ error: 'Mehrere Geräte heißen „Sofa“' });
     expect(resolveTarget({ kind: 'device', name: 'Nix' }, devices, groups)).toEqual({ error: 'Gerät „Nix“ gibt es nicht' });
     expect(resolveTarget({ kind: 'group', name: 'Nix' }, devices, groups)).toEqual({ error: 'Gruppe „Nix“ gibt es nicht' });
     expect(resolveTarget({ kind: 'group', name: 'leer' }, devices, groups)).toEqual({ error: 'Diese Gruppe hat keine Geräte.' });
@@ -91,26 +91,26 @@ describe('resolveTarget', () => {
 
 describe('planBrightness', () => {
   it('setzt ein Gerät fest oder schrittweise', () => {
-    expect(planBrightness([dev('a', 'Tisch', { bri: 200 })], 50, false)).toEqual([{ id: 'a', bri: 128 }]);
-    expect(planBrightness([dev('a', 'Tisch', { bri: 128 })], 10, true)).toEqual([{ id: 'a', bri: 153 }]);
-    expect(planBrightness([dev('a', 'Tisch', { bri: 128 })], -100, true)).toEqual([{ id: 'a', bri: 3 }]);
-    expect(planBrightness([dev('a', 'Tisch', { bri: 250 })], 100, true)).toEqual([{ id: 'a', bri: 255 }]);
+    expect(planBrightness([dev('a', 'Regal', { bri: 200 })], 50, false)).toEqual([{ id: 'a', bri: 128 }]);
+    expect(planBrightness([dev('a', 'Regal', { bri: 128 })], 10, true)).toEqual([{ id: 'a', bri: 153 }]);
+    expect(planBrightness([dev('a', 'Regal', { bri: 128 })], -100, true)).toEqual([{ id: 'a', bri: 3 }]);
+    expect(planBrightness([dev('a', 'Regal', { bri: 250 })], 100, true)).toEqual([{ id: 'a', bri: 255 }]);
   });
 
   it('dimmt Gruppen anteilig, ausgeschaltete bleiben aus', () => {
-    expect(planBrightness([dev('a', 'Tisch', { bri: 200 }), dev('b', 'Bett', { bri: 100 })], 50, false)).toEqual([
+    expect(planBrightness([dev('a', 'Regal', { bri: 200 }), dev('b', 'Sofa', { bri: 100 })], 50, false)).toEqual([
       { id: 'a', bri: 128 },
       { id: 'b', bri: 64 },
     ]);
-    expect(planBrightness([dev('a', 'Tisch', { bri: 200 }), dev('b', 'Bett', { on: false, bri: 100 })], 50, false)).toEqual([{ id: 'a', bri: 128 }]);
+    expect(planBrightness([dev('a', 'Regal', { bri: 200 }), dev('b', 'Sofa', { on: false, bri: 100 })], 50, false)).toEqual([{ id: 'a', bri: 128 }]);
   });
 
   it('schaltet eine ganz ausgeschaltete Gruppe anteilig ein, ohne erreichbare nichts', () => {
-    expect(planBrightness([dev('a', 'Tisch', { on: false, bri: 200 }), dev('b', 'Bett', { on: false, bri: 100 })], 100, false)).toEqual([
+    expect(planBrightness([dev('a', 'Regal', { on: false, bri: 200 }), dev('b', 'Sofa', { on: false, bri: 100 })], 100, false)).toEqual([
       { id: 'a', bri: 255 },
       { id: 'b', bri: 128 },
     ]);
-    expect(planBrightness([dev('a', 'Tisch', { status: 'offline' })], 50, false)).toEqual([]);
+    expect(planBrightness([dev('a', 'Regal', { status: 'offline' })], 50, false)).toEqual([]);
   });
 });
 

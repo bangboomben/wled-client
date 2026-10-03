@@ -636,7 +636,9 @@ if (!app.requestSingleInstanceLock()) {
       devices: () => manager.list(),
       groups: () => groups.list(),
       staticOf: (id) => manager.get(id)?.staticData ?? null,
-      send: (id, patch) => void manager.send(id, patch),
+      presetsReady: (id) => manager.get(id)?.presetsLoaded ?? false,
+      // Bestätigt und still: Der Link meldet einen Fehlschlag selbst im Hinweis, das versteckte Fenster soll keinen Toast zeigen.
+      send: (id, patch) => manager.send(id, patch, undefined, true, true),
       applyAll: (action, ids) => manager.applyAll(action, ids),
       copyLook: (look, ids) => manager.copyLook(look, ids),
       notify: (message) => tray?.displayBalloon({ iconType: 'warning', title: 'WLED Client', content: t('Link: {reason}', { reason: message }) }),
