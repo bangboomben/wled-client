@@ -1,12 +1,10 @@
 import { key, t } from '../../shared/i18n';
 import type { Color, DeviceSnapshot, PalxEntry, WledInfo, WledSegment, WledState } from '../../shared/types';
+import { viewSeg } from '../../shared/segments';
+
+export { viewSeg } from '../../shared/segments';
 
 // ------------------------------------------------------------------ Segmente
-
-/** Das Segment, dessen Werte die Oberfläche zeigt: das erste ausgewählte, sonst das Hauptsegment. */
-export function viewSeg(state: WledState): WledSegment {
-  return state.seg.find((s) => s.sel) ?? state.seg.find((s) => s.id === state.mainseg) ?? state.seg[0];
-}
 
 /**
  * Patch für „aktuelle Auswahl“: ohne id wirkt er in WLED auf alle ausgewählten Segmente.

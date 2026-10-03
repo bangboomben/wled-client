@@ -414,4 +414,7 @@ export const EN: Record<string, string> = {
   'Helligkeit muss zwischen 1 und 100 liegen': 'Brightness must be between 1 and 100',
   'Farbe als sechs Hex-Ziffern angeben, z. B. ff0000': 'Give the color as six hex digits, e.g. ff0000',
   'Presets gibt es nur für einzelne Geräte': 'Presets work for single devices only',
+  'Gruppe „{name}“ gibt es nicht': 'No group named “{name}”',
+  'Gerät „{name}“ gibt es nicht': 'No device named “{name}”',
+  'Mehrere Geräte heißen „{name}“': 'Several devices are named “{name}”',
 };

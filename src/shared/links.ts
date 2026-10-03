@@ -1,8 +1,9 @@
 // Links wled-client://<ziel>/<aktion>[/<wert>] — fürs Stream Deck und für Automationen.
 // Reine Funktionen ohne Electron: zerlegen, Namen auflösen, Helligkeit und Presets ausrechnen.
 
+import { brightnessBase, groupMembers, scaleBrightness, type BriTarget } from './groups';
 import { t } from './i18n';
-import type { Color } from './types';
+import type { Color, DeviceGroup, DeviceSnapshot, Presets } from './types';
 
 export type LinkTarget = { kind: 'device' | 'group'; name: string } | { kind: 'all' };
 
@@ -83,4 +84,44 @@ export function parseLink(text: string): LinkCommand | { error: string } {
   if (verb === 'preset') return { target, action: { type: 'preset', ref: value } };
   if (verb === 'look-from') return { target, action: { type: 'lookFrom', source: value } };
   return { target, action: { type: verb as 'effect' | 'palette', name: value } };
+}
+
+/** Geräte zum Ziel: Namen ohne Rücksicht auf Groß-/Kleinschreibung, Gruppen in der Reihenfolge der Geräteliste. */
+export function resolveTarget(target: LinkTarget, devices: DeviceSnapshot[], groups: DeviceGroup[]): { ids: string[] } | { error: string } {
+  if (target.kind === 'all') return devices.length ? { ids: devices.map((d) => d.id) } : { error: t('Keine Geräte') };
+  const lower = target.name.toLowerCase();
+  if (target.kind === 'group') {
+    const g = groups.find((x) => x.name.toLowerCase() === lower);
+    if (!g) return { error: t('Gruppe „{name}“ gibt es nicht', { name: target.name }) };
+    const ids = groupMembers(g, devices).map((d) => d.id);
+    return ids.length ? { ids } : { error: t('Diese Gruppe hat keine Geräte.') };
+  }
+  const found = devices.filter((d) => d.name.toLowerCase() === lower);
+  if (found.length === 1) return { ids: [found[0].id] };
+  return {
+    error: found.length ? t('Mehrere Geräte heißen „{name}“', { name: target.name }) : t('Gerät „{name}“ gibt es nicht', { name: target.name }),
+  };
+}
+
+const toBri = (pct: number) => Math.min(255, Math.max(1, Math.round((pct * 255) / 100)));
+
+/**
+ * Helligkeit in Prozent, fest oder als Schritt — für Gruppen anteilig wie der Gruppenregler: Bezug ist die hellste
+ * leuchtende Lampe, ausgeschaltete bleiben aus; leuchtet keine, gehen alle erreichbaren anteilig an.
+ */
+export function planBrightness(members: DeviceSnapshot[], value: number, relative: boolean): BriTarget[] {
+  const base = brightnessBase(members);
+  if (!base.length) return [];
+  const current = Math.round((Math.max(...base.map((b) => b.bri)) * 100) / 255);
+  const pct = relative ? Math.min(100, Math.max(1, current + value)) : value;
+  return scaleBrightness(base, toBri(pct));
+}
+
+/** Preset beim Namen (ohne Groß-/Kleinschreibung), sonst bei der Nummer; Preset 0 ist WLEDs Platzhalter. */
+export function findPreset(presets: Presets, ref: string): number | null {
+  const lower = ref.toLowerCase();
+  for (const [id, p] of Object.entries(presets)) {
+    if (Number(id) > 0 && p?.n?.toLowerCase() === lower) return Number(id);
+  }
+  return /^\d+$/.test(ref) && Number(ref) > 0 && presets[String(Number(ref))] ? Number(ref) : null;
 }
