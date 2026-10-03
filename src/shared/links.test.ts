@@ -36,9 +36,12 @@ describe('parseLink', () => {
       'wled-client://all/brightness',
       'wled-client://all/effect/',
       'wled-client://device/%E0%A4%A/off',
+      'wled-client://all/off//',
+      'wled-client://device/Tisch/off//',
     ]) {
       expect(parseLink(text)).toEqual(invalid);
     }
+    expect(parseLink(undefined as unknown as string)).toEqual(invalid);
   });
 
   it('nennt den genauen Grund', () => {

@@ -28,13 +28,14 @@ const WITH_VALUE = ['brightness', 'preset', 'color', 'effect', 'palette', 'look-
 /** Zerlegt einen Link streng; alles Unpassende ergibt einen übersetzten Grund statt eines Befehls. */
 export function parseLink(text: string): LinkCommand | { error: string } {
   const invalid = { error: t('Ungültiger Link') };
+  if (typeof text !== 'string') return invalid; // Links kommen aus fremden Quellen
   if (text.length > LINK_MAX) return invalid;
   const m = /^wled-client:(?:\/\/)?(.*)$/i.exec(text.trim());
   if (!m) return invalid;
   let parts: string[];
   try {
     parts = m[1]
-      .replace(/\/+$/, '')
+      .replace(/\/$/, '') // höchstens ein abschließender Schrägstrich
       .split('/')
       .map((p) => decodeURIComponent(p).trim());
   } catch {
