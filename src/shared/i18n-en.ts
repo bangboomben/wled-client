@@ -406,4 +406,12 @@ export const EN: Record<string, string> = {
   'Effekt für alle …': 'Effect for all …',
   'Palette für alle …': 'Palette for all …',
   'Look von …': 'Look from …',
+
+  // Links
+  'Ungültiger Link': 'Invalid link',
+  'Unbekannte Aktion „{name}“': 'Unknown action “{name}”',
+  'Name fehlt oder ist zu lang': 'Name missing or too long',
+  'Helligkeit muss zwischen 1 und 100 liegen': 'Brightness must be between 1 and 100',
+  'Farbe als sechs Hex-Ziffern angeben, z. B. ff0000': 'Give the color as six hex digits, e.g. ff0000',
+  'Presets gibt es nur für einzelne Geräte': 'Presets work for single devices only',
 };
