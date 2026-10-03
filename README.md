@@ -109,11 +109,14 @@ lights with `wled-client://<target>/<action>[/<value>]`. If the app isn't runnin
 | `effect/<name>`, `palette/<name>` | effect or palette by name |
 | `look-from/<light>` | copy the look of another light |
 
-Names are case-insensitive; write spaces as `%20`. Examples: `wled-client://group/Living%20room/toggle`,
-`wled-client://device/Desk/brightness/+10`, `wled-client://all/color/ffb060`.
+A brightness link also switches a light on; in a group, lights that are off stay off while any other one is lit.
+
+Names are case-insensitive. Write spaces as `%20`, and `/`, `#` and `%` inside a name as `%2F`, `%23` and `%25`.
+Examples: `wled-client://group/Living%20room/toggle`, `wled-client://device/Desk/brightness/+10`,
+`wled-client://all/color/ffb060`.
 
 - **Stream Deck:** action *System › Open*, paste the link.
-- **AutoHotkey:** `Run "wled-client://all/off"`
+- **AutoHotkey v2:** `Run "wled-client://all/off"`
 - **Task Scheduler:** program `explorer.exe`, argument `"wled-client://all/off"`
 
 Errors (unknown name, light not reachable) show up as a Windows notification. Links only change what you could change
