@@ -102,8 +102,8 @@ lights with `wled-client://<target>/<action>[/<value>]`. If the app isn't runnin
 | Action | Meaning |
 |---|---|
 | `on`, `off`, `toggle` | switch (a group toggles like its switch in the app) |
-| `brightness/50` | brightness in percent; groups dim proportionally |
-| `brightness/+10`, `brightness/-10` | one step brighter or darker |
+| `brightness/50` | brightness in percent, 1 to 100 (`off` switches off, 0 is not accepted); groups dim proportionally |
+| `brightness/+10`, `brightness/-10` | 10 points brighter or darker |
 | `preset/<name or number>` | apply a preset (single lights only) |
 | `color/ff8000` | solid color |
 | `effect/<name>`, `palette/<name>` | effect or palette by name |
