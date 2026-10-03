@@ -153,6 +153,8 @@ export function Sidebar({
   groups,
   selectedId,
   onSelect,
+  selectedGroupId,
+  onSelectGroup,
   onAdd,
   onAddGroup,
   onSettings,
@@ -163,6 +165,8 @@ export function Sidebar({
   groups: DeviceGroup[];
   selectedId?: string;
   onSelect: (id: string) => void;
+  selectedGroupId?: string;
+  onSelectGroup: (id: string) => void;
   onAdd: () => void;
   onAddGroup: () => void;
   onSettings: () => void;
@@ -191,7 +195,7 @@ export function Sidebar({
           <>
             <div className="list-heading">{t('Gruppen')}</div>
             {groups.map((g) => (
-              <GroupRow key={g.id} group={g} devices={devices} onEdit={onEditGroup} />
+              <GroupRow key={g.id} group={g} devices={devices} active={g.id === selectedGroupId} onSelect={onSelectGroup} onEdit={onEditGroup} />
             ))}
             <div className="list-heading">{t('Geräte')}</div>
           </>

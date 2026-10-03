@@ -66,6 +66,12 @@ describe('cleanSettings', () => {
     expect(cleanSettings({ selectedId: 3 })).toEqual({});
   });
 
+  it('übernimmt selectedGroupId nur als Text, auch leer (= keine Gruppe gewählt)', () => {
+    expect(cleanSettings({ selectedGroupId: 'g1' })).toEqual({ selectedGroupId: 'g1' });
+    expect(cleanSettings({ selectedGroupId: '' })).toEqual({ selectedGroupId: '' });
+    expect(cleanSettings({ selectedGroupId: 5 })).toEqual({});
+  });
+
   it('lässt unbekannte Schlüssel weg', () => {
     expect(cleanSettings({ theme: 'system', foo: 1 })).toEqual({ theme: 'system' });
   });

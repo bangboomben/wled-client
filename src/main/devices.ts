@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { t } from '../shared/i18n';
-import { lookPatch, type CopyResult, type Look } from '../shared/look';
-import type { CommandResult, DeviceConfig, DeviceSnapshot } from '../shared/types';
+import { actionPatch, lookPatch, type CopyResult, type GroupAction, type Look } from '../shared/look';
+import type { CommandResult, DeviceConfig, DeviceSnapshot, DeviceStatic, WledState } from '../shared/types';
 import { DeviceConnection, normalizeHost, probeInfo } from './device';
 import type { Store } from './store';
 
@@ -158,14 +158,17 @@ export class DeviceManager extends EventEmitter {
     }
   }
 
-  /** Look auf Geräte übertragen: je Gerät ein Befehl mit Bestätigung, Ergebnis je Gerät. */
-  copyLook(look: Look, ids: string[]): Promise<CopyResult[]> {
+  /** Je Gerät einen Befehl bauen und mit Bestätigung still senden; Ergebnis je Gerät. */
+  applyEach(
+    ids: string[],
+    build: (state: WledState, st: DeviceStatic | null) => { patch: Record<string, unknown> } | { reason: string },
+  ): Promise<CopyResult[]> {
     return Promise.all(
       ids.map(async (id): Promise<CopyResult> => {
         const conn = this.conns.get(id);
         if (!conn) return { id, ok: false, reason: t('Gerät nicht gefunden') };
         if (conn.status !== 'online' || !conn.state) return { id, ok: false, reason: t('Offline') };
-        const r = lookPatch(look, conn.state, conn.staticData);
+        const r = build(conn.state, conn.staticData);
         if ('reason' in r) return { id, ok: false, reason: r.reason };
         // Leise senden: Die Zusammenfassung der Oberfläche nennt das Gerät schon, ein eigener Toast käme doppelt.
         const sent = await this.send(id, r.patch, undefined, true, true);
@@ -176,6 +179,16 @@ export class DeviceManager extends EventEmitter {
         return { id, ok: false, reason: error || t('Übertragen fehlgeschlagen') };
       }),
     );
+  }
+
+  /** Look auf Geräte übertragen. */
+  copyLook(look: Look, ids: string[]): Promise<CopyResult[]> {
+    return this.applyEach(ids, (state, st) => lookPatch(look, state, st));
+  }
+
+  /** Schnellfarbe, Effekt oder Palette „für alle“ auf Geräte anwenden. */
+  applyAll(action: GroupAction, ids: string[]): Promise<CopyResult[]> {
+    return this.applyEach(ids, (state, st) => actionPatch(action, state, st));
   }
 
   setLive(id: string | null): void {

@@ -19,7 +19,7 @@ import { ColorWheel } from '../ColorWheel';
 import { Icon } from '../Icon';
 import { Slider } from '../controls';
 
-const QUICK: Array<{ c: Color; label: string }> = [
+export const QUICK: Array<{ c: Color; label: string }> = [
   { c: [255, 0, 0], label: key('Rot') },
   { c: [255, 160, 0], label: key('Orange') },
   { c: [255, 200, 0], label: key('Gelb') },

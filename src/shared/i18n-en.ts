@@ -391,4 +391,19 @@ export const EN: Record<string, string> = {
   'Look von „{name}“ übertragen': 'Copy the look of “{name}”',
   'Effekt, Palette, Farben und Effekt-Regler. Helligkeit und An/Aus bleiben, wie sie sind.':
     'Effect, palette, colors and effect sliders. Brightness and on/off stay as they are.',
+  'Nicht übernommen': 'Not applied',
+
+  // Gruppenansicht
+  'Gruppe · 1 Gerät': 'Group · 1 device',
+  'Gruppe · {n} Geräte': 'Group · {n} devices',
+  'Diese Gruppe hat keine Geräte.': 'This group has no devices.',
+  'Kein Gerät der Gruppe ist erreichbar.': 'No device of this group is reachable.',
+  'Eigene Palette': 'Custom palette',
+  'Öffnen': 'Open',
+  '{name} öffnen': 'Open {name}',
+  'Für alle': 'For all',
+  'Helligkeit und An/Aus bleiben, wie sie sind.': 'Brightness and on/off stay as they are.',
+  'Effekt für alle …': 'Effect for all …',
+  'Palette für alle …': 'Palette for all …',
+  'Look von …': 'Look from …',
 };

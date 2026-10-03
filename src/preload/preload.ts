@@ -27,6 +27,7 @@ const bridge: WledBridge = {
   updateGroup: (id, group) => ipcRenderer.invoke('group-update', id, group),
   removeGroup: (id) => ipcRenderer.invoke('group-remove', id),
   copyLook: (look, ids) => ipcRenderer.invoke('copy-look', look, ids),
+  applyAll: (action, ids) => ipcRenderer.invoke('apply-all', action, ids),
   localSubnets: () => ipcRenderer.invoke('subnets'),
   discover: () => ipcRenderer.invoke('discover'),
   scan: (targets) => ipcRenderer.invoke('scan', targets),

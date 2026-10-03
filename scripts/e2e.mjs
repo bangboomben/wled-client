@@ -578,6 +578,117 @@ try {
     await api(PORTS.desk, '/json/state', { seg: [{ id: 0, pal: 0 }] });
   });
 
+  await step('Gruppenansicht: Klick auf die Gruppe zeigt Kopf und Mitglieder', async () => {
+    await win.click('.group-row:has-text("E2E Gruppe") .device-name');
+    await win.waitForFunction(() => document.querySelector('.group-view .device-title')?.textContent === 'E2E Gruppe');
+    const cards = await win.$$eval('.member-card .device-name', (els) => els.map((e) => e.textContent));
+    expect(cards.join('|') === 'Mock Desk|Mock Bedroom', `Karten: ${cards}`);
+    expect(await win.locator('.group-row:has-text("E2E Gruppe")').evaluate((el) => el.classList.contains('active')), 'Gruppenzeile nicht markiert');
+    const eff = await api(PORTS.desk, '/json/eff');
+    const fxName = eff[(await state(PORTS.desk)).seg[0].fx];
+    await win.waitForFunction((n) => document.querySelector('.member-card .member-look')?.textContent?.includes(n), fxName, { timeout: 5000 });
+    // Ein/Aus im Kopf wie der Gruppenschalter: alle aus, dann alle an
+    await api(PORTS.desk, '/json/state', { on: true });
+    await win.waitForFunction(() => document.querySelector('.group-view .power-btn')?.getAttribute('aria-pressed') === 'true');
+    await win.click('.group-view .power-btn');
+    await waitFor(async () => !(await state(PORTS.desk)).on && !(await state(PORTS.bedroom)).on, 'beide aus');
+    await win.click('.group-view .power-btn');
+    await waitFor(async () => (await state(PORTS.desk)).on && (await state(PORTS.bedroom)).on, 'beide an');
+  });
+
+  await step('Gruppenansicht: bleibt nach Neuladen gewählt, „Öffnen →“ springt zum Gerät', async () => {
+    await win.waitForTimeout(700); // die Auswahl wird nach 400 ms gespeichert
+    await win.reload();
+    await win.waitForFunction(() => document.querySelector('.group-view .device-title')?.textContent === 'E2E Gruppe', null, { timeout: 8000 });
+    await win.click('.member-card:has-text("Mock Bedroom") .link-btn');
+    await win.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Bedroom');
+    expect(!(await win.$('.group-view')), 'Gruppenansicht ist noch zu sehen');
+  });
+
+  await step('Gruppenansicht: Strg+1 und Tray wählen ein Gerät, gelöschte Gruppe fällt auf ein Gerät zurück', async () => {
+    await win.click('.group-row:has-text("E2E Gruppe") .device-name');
+    await win.waitForSelector('.group-view');
+    await win.keyboard.press('Control+1');
+    await win.waitForFunction(() => !document.querySelector('.group-view') && document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    await win.click('.group-row:has-text("E2E Gruppe") .device-name');
+    await win.waitForSelector('.group-view');
+    await fly.click('.flyout-row:has-text("Mock Bedroom") .device-meta');
+    await win.waitForFunction(() => !document.querySelector('.group-view') && document.querySelector('.device-title')?.textContent === 'Mock Bedroom');
+    // Vorübergehende Gruppe anlegen, wählen, löschen
+    await win.click('.sidebar-foot .btn:has-text("Gruppe")');
+    await win.fill('.modal .group-name input', 'Wegwerf');
+    await win.click('.modal .check:has-text("Mock Desk")');
+    await win.click('.modal .btn.primary');
+    await win.click('.group-row:has-text("Wegwerf") .device-name');
+    await win.waitForFunction(() => document.querySelector('.group-view .device-title')?.textContent === 'Wegwerf');
+    win.once('dialog', (d) => d.accept());
+    await win.click('.group-row:has-text("Wegwerf")', { button: 'right' });
+    await win.click('.modal .btn.danger');
+    await win.waitForFunction(() => !document.querySelector('.group-view') && !!document.querySelector('.device-view .device-title'));
+  });
+
+  await step('Für alle: Schnellfarbe, Effekt und Palette', async () => {
+    await win.click('.group-row:has-text("E2E Gruppe") .device-name');
+    await win.waitForSelector('.group-view .for-all');
+    const eff = await api(PORTS.desk, '/json/eff');
+    const pal = await api(PORTS.desk, '/json/pal');
+    // Bedroom startet mit Palette 0, damit „beide Party“ die Palettenaktion wirklich belegt
+    await api(PORTS.bedroom, '/json/state', { seg: [{ id: 0, pal: 0 }] });
+    const before = { [PORTS.desk]: await state(PORTS.desk), [PORTS.bedroom]: await state(PORTS.bedroom) };
+    await win.click('.for-all .quick-btn[title="Rot"]');
+    await waitFor(async () => {
+      for (const p of [PORTS.desk, PORTS.bedroom]) {
+        const s = await state(p);
+        if (s.seg[0].fx !== eff.indexOf('Solid') || s.seg[0].col[0].slice(0, 3).join() !== '255,0,0') return false;
+      }
+      return true;
+    }, 'beide Solid in Rot');
+    for (const p of [PORTS.desk, PORTS.bedroom]) {
+      const s = await state(p);
+      expect(s.bri === before[p].bri && s.on === before[p].on, `Port ${p}: Helligkeit oder An/Aus verändert`);
+    }
+    await win.waitForFunction(() => !document.querySelector('.for-all select')?.disabled);
+    await win.selectOption('.for-all select[aria-label="Effekt für alle …"]', 'Rainbow');
+    await waitFor(
+      async () => (await state(PORTS.desk)).seg[0].fx === eff.indexOf('Rainbow') && (await state(PORTS.bedroom)).seg[0].fx === eff.indexOf('Rainbow'),
+      'beide Rainbow',
+    );
+    await win.selectOption('.for-all select[aria-label="Palette für alle …"]', 'Party');
+    await waitFor(
+      async () => (await state(PORTS.desk)).seg[0].pal === pal.indexOf('Party') && (await state(PORTS.bedroom)).seg[0].pal === pal.indexOf('Party'),
+      'beide Party',
+    );
+    expect((await win.$eval('.for-all select[aria-label="Effekt für alle …"]', (el) => el.value)) === '', 'Effektauswahl nicht zurückgesetzt');
+    // Pfeiltaste auf der geschlossenen Liste ändert nur den Wert, angewendet wird erst mit Enter
+    const effSel = '.for-all select[aria-label="Effekt für alle …"]';
+    await win.waitForFunction(() => !document.querySelector('.for-all select')?.disabled);
+    await win.focus(effSel);
+    await win.keyboard.press('ArrowDown');
+    await win.waitForTimeout(700);
+    for (const p of [PORTS.desk, PORTS.bedroom]) {
+      expect((await state(p)).seg[0].fx === eff.indexOf('Rainbow'), `Port ${p}: Pfeiltaste hat den Effekt schon angewendet`);
+    }
+    const first = await win.$eval(`${effSel} option:nth-child(2)`, (el) => el.value);
+    expect(first !== 'Rainbow' && eff.includes(first), `erste Effektoption: ${first}`);
+    await win.keyboard.press('Enter');
+    await waitFor(
+      async () => (await state(PORTS.desk)).seg[0].fx === eff.indexOf(first) && (await state(PORTS.bedroom)).seg[0].fx === eff.indexOf(first),
+      `beide ${first} per Enter`,
+    );
+  });
+
+  await step('Für alle: Look von Mock Desk', async () => {
+    const eff = await api(PORTS.desk, '/json/eff');
+    await api(PORTS.desk, '/json/state', { seg: [{ id: 0, fx: eff.indexOf('Aurora'), sx: 33 }] });
+    await mainSeg('dev-desk', (s) => s.fx === eff.indexOf('Aurora') && s.sx === 33, 'Desk-Look im Hauptprozess');
+    await win.selectOption('.for-all select[aria-label="Look von …"]', { label: 'Mock Desk' });
+    await waitFor(async () => {
+      const g = (await state(PORTS.bedroom)).seg[0];
+      return g.fx === eff.indexOf('Aurora') && g.sx === 33;
+    }, 'Bedroom hat den Look von Mock Desk');
+    await win.waitForSelector('.toast:has-text("Look auf 1 Gerät übertragen")', { timeout: 4000 });
+  });
+
   await step('Dialog sucht beim Öffnen per mDNS', async () => {
     await win.click('.sidebar-foot .btn:has-text("Gerät")');
     await win.waitForFunction(() => document.querySelectorAll('.scan-row').length === 3, null, { timeout: 8000 });
