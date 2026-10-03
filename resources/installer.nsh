@@ -5,6 +5,10 @@
 ; SHELL_CONTEXT follows the per-user or per-machine choice made in the installer.
 
 !macro customInstall
+  ; Per-user to per-machine: the old uninstaller ran with --updated and kept its HKCU key, which would override the HKLM one.
+  ${if} $installMode == "all"
+    DeleteRegKey HKCU "Software\Classes\wled-client"
+  ${endIf}
   WriteRegStr SHELL_CONTEXT "Software\Classes\wled-client" "" "URL:WLED Client"
   WriteRegStr SHELL_CONTEXT "Software\Classes\wled-client" "URL Protocol" ""
   WriteRegStr SHELL_CONTEXT "Software\Classes\wled-client\DefaultIcon" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME},0"
