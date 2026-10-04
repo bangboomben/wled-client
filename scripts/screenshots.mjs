@@ -148,6 +148,8 @@ async function shoot(win, fly, select) {
   await win.screenshot({ path: path.join(OUT, 'light.png') });
   await win.emulateMedia({ colorScheme: 'dark' });
 
+  // Das Schlafzimmer ist für die anderen Bilder gedimmt; im Plan soll seine Linie gut zu sehen sein
+  await post(bedroom, { bri: 200 });
   await win.click('.plan-row');
   await win.waitForSelector('.plan-view');
   await win.waitForFunction(() => document.querySelectorAll('.plan-item').length === 4);
