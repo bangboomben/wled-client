@@ -1062,11 +1062,16 @@ await step('Raumplan: Anzeige, Live-Farben, Bedienfeld, Wechsel und Neustart', a
     await w.waitForFunction(() => !document.querySelector('.plan-panel select')?.disabled);
     await w.selectOption('.plan-panel select', 'Rainbow');
     await waitFor(async () => (await state(PLAN_PORTS.bulb)).seg[0].fx === eff.indexOf('Rainbow'), 'Bulb-Effekt Rainbow');
+    const focused = () => w.evaluate(() => ({ role: document.activeElement?.getAttribute('role'), inPanel: !!document.activeElement?.closest('.plan-panel'), device: document.activeElement?.getAttribute('data-device') }));
+    // Klick auf den Innenabstand des Bedienfelds: Der Fokus bleibt im Feld (tabIndex −1), und Esc bringt ihn zurück auf den Bulb
+    const pbox = await w.locator('.plan-panel').boundingBox();
+    await w.mouse.click(pbox.x + 4, pbox.y + pbox.height - 4);
+    await waitFor(async () => (await focused()).inPanel, 'Fokus bleibt nach einem Klick auf den Rand im Bedienfeld');
     await w.keyboard.press('Escape');
     await w.waitForSelector('.plan-panel', { state: 'detached' });
+    await waitFor(async () => (await focused()).device === 'dev-bulb', 'Fokus nach Esc zurück auf dem Bulb');
     // Tastatur: Fokus auf den Desk, Enter öffnet sein Bedienfeld und setzt den Fokus auf den Schalter darin;
     // Esc schließt und bringt den Fokus zurück auf den Desk
-    const focused = () => w.evaluate(() => ({ role: document.activeElement?.getAttribute('role'), inPanel: !!document.activeElement?.closest('.plan-panel'), device: document.activeElement?.getAttribute('data-device') }));
     await w.focus('.plan-item[data-device="dev-desk"]');
     await w.keyboard.press('Enter');
     await w.waitForSelector('.plan-panel:has-text("Mock Desk")');
@@ -1086,10 +1091,18 @@ await step('Raumplan: Anzeige, Live-Farben, Bedienfeld, Wechsel und Neustart', a
     expect((await state(PLAN_PORTS.bulb)).on, 'Leertaste hat den Schalter mitbetätigt');
     await w.keyboard.press('Escape');
     await w.waitForSelector('.plan-panel', { state: 'detached' });
+    // Live-Bilder fordert der Hauptprozess an, solange der Plan sichtbar ist (GET /__live am Mock: empfängt ein Client welche?)
+    const isLive = async (port) => (await api(port, '/__live')).live;
+    await waitFor(async () => (await isLive(PLAN_PORTS.desk)) && (await isLive(PLAN_PORTS.bulb)) && (await isLive(PLAN_PORTS.matrix)), 'Im Plan senden alle drei Geräte Live-Bilder');
     // Strg+1 verlässt den Plan; die Wahl wird nach 400 ms gespeichert
     await w.keyboard.press('Control+1');
     await w.waitForSelector('.plan-view', { state: 'detached' });
     await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    // Die Geräteansicht braucht nur das Live-Bild ihres Geräts: Matrix und Bulb hören auf, der Desk bleibt live
+    await waitFor(
+      async () => (await isLive(PLAN_PORTS.desk)) && !(await isLive(PLAN_PORTS.bulb)) && !(await isLive(PLAN_PORTS.matrix)),
+      'Nach dem Verlassen des Plans nur noch der Desk live (Matrix und Bulb nicht)',
+    );
     await w.waitForTimeout(800);
     expect(await closeApp(pa, 'Raumplan verlassen'), 'App reagiert nicht auf Beenden');
     // Neustart: Das Profil beginnt mit planOpen: true — jetzt zeigt die App die Geräteansicht, also wurde das Verlassen gespeichert
@@ -1360,6 +1373,17 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     await w.waitForSelector('.plan-view');
     await w.click('.plan-edit-btn');
     await planSettled(w);
+    // Ziehen aus „Noch nicht im Plan“: Matrix aus dem Plan nehmen und aus der Liste an dieselbe Stelle ziehen
+    const ma = await planPx(w, 18, 5);
+    await w.mouse.click(ma[0], ma[1], { button: 'right' });
+    await w.click('.plan-menu button:has-text("Aus dem Plan entfernen")');
+    await w.waitForFunction(() => !document.querySelector('.plan-item[data-device="dev-matrix"]'));
+    const stageBox = await w.locator('.plan-stage').boundingBox();
+    await w.locator('.plan-side-item:has-text("Mock Matrix")').dragTo(w.locator('.plan-stage'), { targetPosition: { x: ma[0] - stageBox.x, y: ma[1] - stageBox.y } });
+    await w.waitForSelector('.plan-item[data-device="dev-matrix"]', { timeout: 4000 });
+    const dropped = await itemAt('dev-matrix');
+    expect(Math.abs(dropped[0] - ma[0]) < 3 && Math.abs(dropped[1] - ma[1]) < 3, `Die Matrix liegt nach dem Ziehen bei ${dropped.map(Math.round)}, nicht bei ${ma.map(Math.round)}`);
+    expect((await w.locator('.plan-side-item:has-text("Mock Matrix")').count()) === 0, 'Die Matrix steht nach dem Ziehen noch in der Liste');
     // Das Kontextmenü bleibt in der Bühne, auch am rechten Rand (die Matrix reicht bis Einheit 22)
     const mx = await planPx(w, 21.5, 6.5);
     await w.mouse.click(mx[0], mx[1], { button: 'right' });
@@ -1382,6 +1406,11 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     expect((await w.locator('.plan-item[data-device="dev-bulb"]').count()) === 0, 'Strg+Z hat das gelöschte Gerät zurückgebracht');
     await w.click('.plan-done-btn');
     await waitFor(() => saved()?.items?.length === 2, 'Bulb aus plan.json entfernt', 6000);
+    // Erst wenn das Bearbeiten beendet ist, darf Strg+1 kommen (sonst fragt es noch nach Änderungen)
+    await w.waitForSelector('.plan-side', { state: 'detached' });
+    // Die hineingezogene Matrix liegt genau dort, wo sie vorher lag (Einrasten aufs Raster, wie beim Anklicken)
+    const matrixRect = JSON.stringify(saved().items.find((i) => i.deviceId === 'dev-matrix')?.rect);
+    expect(matrixRect === JSON.stringify({ x: 14, y: 3, w: 8, h: 4 }), `Matrix nach dem Ziehen: ${matrixRect}`);
     // Ohne Bearbeiten: ein gelöschtes Gerät verschwindet ebenfalls aus dem Plan
     await w.keyboard.press('Control+1');
     await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');

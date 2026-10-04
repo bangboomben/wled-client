@@ -10,7 +10,8 @@
 // Fixture mit Variante: "bedroom+bulb" (1 LED, wie ein Bulb oder einfacher RGB-Streifen),
 // "desk+matrix=16x8" (2D-Matrix; Live-Bild Version 2 mit Breite und Höhe).
 // Die Fixtures sind echte API-Antworten (WLED 16.0.1) ohne MAC, IP und WLAN-Daten.
-// Zusatzendpunkte für Tests: GET /__log (empfangene Befehle), POST /__reset,
+// Zusatzendpunkte für Tests: GET /__log (empfangene Befehle), GET /__live ({ live }: bekommt ein Client gerade
+// Live-Bilder), POST /__reset,
 // POST /__presets (presets.json unverändert ersetzen, auch mit kaputten Einträgen).
 
 import dgram from 'node:dgram';
@@ -200,6 +201,8 @@ function createDevice(port, fixture, name) {
         return json(res, { 0: {}, ...presets });
       case '/__log':
         return json(res, log);
+      case '/__live':
+        return json(res, { live: !!liveClient && liveClient.readyState === 1 });
       default:
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(
