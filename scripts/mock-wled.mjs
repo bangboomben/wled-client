@@ -7,8 +7,11 @@
 // (die App fragt dort statt im Netzwerk, wenn WLED_CLIENT_MDNS_TARGET=127.0.0.1:<port> gesetzt ist).
 // --ws-max <Byte>: wie die Firmware verarbeitet das Gerät eine WebSocket-Nachricht nur, wenn sie in einem
 // TCP-Paket ankommt (ca. 1428 Byte ESP32, 528 ESP8266): Größere beantwortet es mit {"error":9}, ohne sie auszuführen.
+// Fixture mit Variante: "bedroom+bulb" (1 LED, wie ein Bulb oder einfacher RGB-Streifen),
+// "desk+matrix=16x8" (2D-Matrix; Live-Bild Version 2 mit Breite und Höhe).
 // Die Fixtures sind echte API-Antworten (WLED 16.0.1) ohne MAC, IP und WLAN-Daten.
-// Zusatzendpunkte für Tests: GET /__log (empfangene Befehle), POST /__reset,
+// Zusatzendpunkte für Tests: GET /__log (empfangene Befehle), GET /__live ({ live }: bekommt ein Client gerade
+// Live-Bilder), POST /__reset,
 // POST /__presets (presets.json unverändert ersetzen, auch mit kaputten Einträgen).
 
 import dgram from 'node:dgram';
@@ -28,8 +31,20 @@ const hsv = (h) => {
 const META_KEYS = ['psave', 'pdel', 'ps', 'pl', 'ib', 'sb', 'sc', 'o', 'n', 'ql', 'playlist', 'v', 'rb', 'fxdef', 'bootps', 'lv'];
 
 function createDevice(port, fixture, name) {
-  const load = (file) => JSON.parse(readFileSync(new URL(`${fixture}/${file}`, FIXTURES), 'utf8'));
+  const [folder, variant = ''] = fixture.split('+');
+  const load = (file) => JSON.parse(readFileSync(new URL(`${folder}/${file}`, FIXTURES), 'utf8'));
   const base = load('json.json');
+  // Testvarianten: Anzahl LEDs und Segment passend zur Bauform
+  const firstSeg = base.state.seg[0];
+  if (variant === 'bulb') {
+    base.info.leds.count = 1;
+    base.state.seg = [{ ...firstSeg, id: 0, start: 0, stop: 1, len: 1 }];
+  } else if (variant.startsWith('matrix=')) {
+    const [w, h] = variant.slice(7).split('x').map(Number);
+    base.info.leds.count = w * h;
+    base.info.leds.matrix = { w, h };
+    base.state.seg = [{ ...firstSeg, id: 0, start: 0, stop: w, startY: 0, stopY: h, len: w * h }];
+  }
   const fxdata = load('fxdata.json');
   const palx = load('palx.json');
   const channels = base.info.leds.rgbw ? 4 : 3;
@@ -186,6 +201,8 @@ function createDevice(port, fixture, name) {
         return json(res, { 0: {}, ...presets });
       case '/__log':
         return json(res, log);
+      case '/__live':
+        return json(res, { live: !!liveClient && liveClient.readyState === 1 });
       default:
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(
@@ -223,18 +240,24 @@ function createDevice(port, fixture, name) {
     });
   });
 
-  // Live-Vorschau: 'L', Version 1, dann RGB je LED (höchstens 256)
+  // Live-Vorschau: 'L', Version 1 (Streifen, höchstens 256 Werte) oder 2 (Matrix mit Breite und Höhe), dann RGB
   let tick = 0;
+  const matrix = base.info.leds.matrix;
   setInterval(() => {
     if (!liveClient || liveClient.readyState !== 1) return;
     tick++;
-    const n = Math.min(base.info.leds.count, 256);
-    const frame = Buffer.alloc(2 + n * 3);
+    const n = matrix ? matrix.w * matrix.h : Math.min(base.info.leds.count, 256);
+    const head = matrix ? 4 : 2;
+    const frame = Buffer.alloc(head + n * 3);
     frame[0] = 0x4c;
-    frame[1] = 1;
+    frame[1] = matrix ? 2 : 1;
+    if (matrix) {
+      frame[2] = matrix.w;
+      frame[3] = matrix.h;
+    }
     for (let i = 0; i < n; i++) {
       const led = Math.floor((i / n) * base.info.leds.count);
-      const seg = state.seg.find((s) => led >= s.start && led < s.stop && s.on);
+      const seg = matrix ? state.seg.find((s) => s.on) : state.seg.find((s) => led >= s.start && led < s.stop && s.on);
       let [r, g, b] = seg && state.on ? seg.col[0] : [0, 0, 0];
       const w = seg && state.on ? (seg.col[0][3] ?? 0) : 0;
       r = Math.min(255, r + w);
@@ -243,9 +266,9 @@ function createDevice(port, fixture, name) {
       // Laufender Effekt: wandernder Regenbogen statt Einzelfarbe
       if (seg && state.on && seg.fx !== 0) [r, g, b] = hsv(((i / n) * 360 + tick * 6) % 360);
       const k = state.bri / 255;
-      frame[2 + i * 3] = r * k;
-      frame[3 + i * 3] = g * k;
-      frame[4 + i * 3] = b * k;
+      frame[head + i * 3] = r * k;
+      frame[head + i * 3 + 1] = g * k;
+      frame[head + i * 3 + 2] = b * k;
     }
     liveClient.send(frame);
   }, 60);

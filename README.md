@@ -25,6 +25,8 @@ automations.**
 - **Groups** — switch and dim several lights together; brightness scales proportionally. Click a group to set a
   color, effect, palette or look for all of its lights
 - **Copy look** — effect, palette, colors and effect sliders from one light to other lights or groups
+- **Room plan** — draw your rooms and place strips, bulbs and matrices where they hang; they glow live, and a click
+  switches, dims or sets an effect
 - **[Links for automations](#links-for-automations)** — control lights from a Stream Deck, hotkeys or the Task
   Scheduler
 - **Everything the web UI does** — colors (wheel, RGBW, CCT), all effects with their own sliders and options,
@@ -34,6 +36,8 @@ automations.**
 - **Light and dark theme**, **English and German**, **automatic updates**
 
 <p align="center"><img src="docs/groups.gif" width="860" alt="Groups: copy a look to a group, set a color and an effect for all members, dim the group" /></p>
+
+<p align="center"><img src="docs/screenshots/plan.png" width="860" alt="Room plan: rooms with live LED strips" /></p>
 
 | | |
 |:---:|:---:|
@@ -126,10 +130,10 @@ mock/fixtures/   recorded WLED 16.0.1 API responses for the simulator
 ## Kurz auf Deutsch
 
 Windows-App für alle WLED-Lampen im Netz: Seitenleiste mit Ein/Aus und Helligkeit je Gerät, Tray-Schnellzugriff,
-Gruppen mit Gruppenansicht, Look übertragen, Links für Stream Deck und Automationen — dazu alles aus der
-WLED-Weboberfläche (Farben, Effekte, Paletten, Segmente, Presets, Playlists, Live-Vorschau). Installer unter
-[Releases](https://github.com/bangboomben/wled-client/releases/latest), ohne Administratorrechte. Oberfläche auf
-Deutsch und Englisch.
+Gruppen mit Gruppenansicht, Look übertragen, Raumplan mit Live-Farben, Links für Stream Deck und Automationen —
+dazu alles aus der WLED-Weboberfläche (Farben, Effekte, Paletten, Segmente, Presets, Playlists, Live-Vorschau).
+Installer unter [Releases](https://github.com/bangboomben/wled-client/releases/latest), ohne Administratorrechte.
+Oberfläche auf Deutsch und Englisch.
 
 ## Feedback
 

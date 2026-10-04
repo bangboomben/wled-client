@@ -1,8 +1,8 @@
 import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AppSettings, DeviceConfig, DeviceGroup } from '../shared/types';
-import { DEFAULT_SETTINGS, cleanDevices, cleanGroups, cleanSettings } from './store-data';
+import type { AppSettings, DeviceConfig, DeviceGroup, RoomPlan } from '../shared/types';
+import { DEFAULT_SETTINGS, cleanDevices, cleanGroups, cleanSettings, readPlanFile } from './store-data';
 
 function readJson<T>(file: string, fallback: T): T {
   try {
@@ -24,9 +24,11 @@ export class Store {
   private readonly devicesFile: string;
   private readonly settingsFile: string;
   private readonly groupsFile: string;
+  private readonly planFile: string;
   private devices: DeviceConfig[];
   private settings: AppSettings;
   private groups: DeviceGroup[];
+  private plan: RoomPlan;
   private saveTimer: NodeJS.Timeout | null = null;
   readonly firstRun: boolean;
 
@@ -35,12 +37,15 @@ export class Store {
     this.devicesFile = path.join(dir, 'devices.json');
     this.settingsFile = path.join(dir, 'settings.json');
     this.groupsFile = path.join(dir, 'groups.json');
+    this.planFile = path.join(dir, 'plan.json');
     this.firstRun = !fs.existsSync(this.devicesFile);
     // Von Hand bearbeitete oder beschädigte Dateien: Unbrauchbares fällt weg, statt den Start zu verhindern.
     this.devices = cleanDevices(readJson<unknown>(this.devicesFile, []));
     this.settings = { ...DEFAULT_SETTINGS, ...cleanSettings(readJson<unknown>(this.settingsFile, {})) };
     // Mitglieder, die es als Gerät nicht (mehr) gibt, fallen schon beim Laden weg.
     this.groups = cleanGroups(readJson<unknown>(this.groupsFile, []), this.devices.map((d) => d.id));
+    // Unlesbare plan.json wird beiseitegelegt (plan.json.broken), damit nichts verloren geht.
+    this.plan = readPlanFile(this.planFile, this.devices.map((d) => d.id));
   }
 
   getDevices(): DeviceConfig[] {
@@ -58,6 +63,15 @@ export class Store {
 
   setGroups(groups: DeviceGroup[]): void {
     this.groups = groups.map((g) => ({ ...g, members: [...g.members] }));
+    this.scheduleSave();
+  }
+
+  getPlan(): RoomPlan {
+    return structuredClone(this.plan);
+  }
+
+  setPlan(plan: RoomPlan): void {
+    this.plan = structuredClone(plan);
     this.scheduleSave();
   }
 
@@ -85,6 +99,7 @@ export class Store {
       writeJsonAtomic(this.devicesFile, this.devices);
       writeJsonAtomic(this.settingsFile, this.settings);
       writeJsonAtomic(this.groupsFile, this.groups);
+      writeJsonAtomic(this.planFile, this.plan);
     } catch (err) {
       console.error('Speichern fehlgeschlagen', err);
     }

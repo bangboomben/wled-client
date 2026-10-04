@@ -147,6 +147,37 @@ export interface DeviceGroup {
   members: string[];
 }
 
+/** Punkt im Raumplan, in Rastereinheiten. */
+export type PlanPoint = [number, number];
+
+export interface PlanRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Raum im Raumplan: beschriftetes Rechteck, nur zur Orientierung. */
+export interface PlanRoom extends PlanRect {
+  id: string;
+  name: string;
+}
+
+/** Platz eines Geräts: Linie mit Knickpunkten (LED 1 am ersten Punkt, `reversed`: am letzten), Punkt oder Fläche. */
+export type PlanItem =
+  | { deviceId: string; shape: 'line'; points: PlanPoint[]; reversed: boolean }
+  | { deviceId: string; shape: 'point'; at: PlanPoint }
+  | { deviceId: string; shape: 'area'; rect: PlanRect };
+
+export type PlanShape = PlanItem['shape'];
+
+/** Inhalt von plan.json. */
+export interface RoomPlan {
+  version: 1;
+  rooms: PlanRoom[];
+  items: PlanItem[];
+}
+
 export type DeviceStatus = 'connecting' | 'online' | 'offline';
 
 export interface DeviceSnapshot {
@@ -185,6 +216,8 @@ export interface AppSettings {
   selectedId?: string;
   /** Gewählte Gruppe; leer oder fehlend = ein Gerät ist gewählt (selectedId). */
   selectedGroupId?: string;
+  /** Raumplan ist gewählt (statt Gerät oder Gruppe). */
+  planOpen: boolean;
   trayHintShown?: boolean;
 }
 
@@ -239,6 +272,7 @@ export interface UpdateState {
 export interface Snapshot {
   devices: DeviceSnapshot[];
   groups: DeviceGroup[];
+  plan: RoomPlan;
   settings: AppSettings;
   version: string;
   update: UpdateState;
@@ -264,6 +298,11 @@ export interface WledBridge {
   createGroup(group: { name: string; members: string[] }): Promise<CommandResult & { id?: string }>;
   updateGroup(id: string, group: { name: string; members: string[] }): Promise<CommandResult>;
   removeGroup(id: string): Promise<void>;
+  /** Raumplan speichern; Antwort: der geprüft gespeicherte Plan. */
+  setPlan(plan: RoomPlan): Promise<RoomPlan>;
+  onPlan(cb: (plan: RoomPlan) => void): () => void;
+  /** Raumplan sichtbar: alle platzierten Geräte schicken Live-Bilder. */
+  setPlanLive(on: boolean): void;
   /** Look auf Geräte übertragen; Ergebnis je Gerät. */
   copyLook(look: Look, ids: string[]): Promise<CopyResult[]>;
   /** Schnellfarbe, Effekt oder Palette „für alle“; Ergebnis je Gerät. */

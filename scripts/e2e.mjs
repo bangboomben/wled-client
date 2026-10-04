@@ -21,6 +21,10 @@ mkdirSync(SHOTS, { recursive: true });
 
 const PORTS = { desk: 18281, bedroom: 18282, extra: 18283 };
 const MDNS_PORT = 18353;
+// Eigene Mock-Geräte für die Raumplan-Schritte: Streifen, Bulb (1 LED), Matrix 16×8
+const PLAN_PORTS = { desk: 18291, bulb: 18292, matrix: 18293 };
+// Port, auf dem nichts lauscht: ein Gerät dort bleibt offline
+const GONE_PORT = 18294;
 const mock = spawn(
   process.execPath,
   [
@@ -37,11 +41,14 @@ const mock = spawn(
   ],
   { stdio: ['ignore', 'pipe', 'inherit'] },
 );
+// Mock-Geräte der Raumplan-Schritte; startPlanMock() setzt ihn früh, damit auch der Watchdog ihn beenden kann
+let planMock;
 // Kein Schritt darf den Lauf unbegrenzt aufhalten (etwa ein Fenster, das sich nicht schließen lässt).
 const WATCHDOG_MS = 8 * 60_000;
 const watchdog = setTimeout(() => {
   console.log(`\nAbbruch: Test läuft länger als ${WATCHDOG_MS / 60_000} min`);
   mock.kill();
+  planMock?.kill();
   process.exit(2);
 }, WATCHDOG_MS);
 
@@ -155,6 +162,80 @@ async function closeApp(electronApp, label) {
 
 /** Löscht ein Testverzeichnis; Windows gibt Dateien eines eben beendeten Prozesses erst verzögert frei. */
 const removeDir = (dir) => rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+
+/** Startet die Mock-Geräte für den Raumplan in einem eigenen Prozess (ohne mDNS) als `planMock`. Scheitert schnell, wenn er endet (z. B. Port belegt). */
+async function startPlanMock() {
+  const proc = spawn(
+    process.execPath,
+    [
+      '--no-warnings',
+      'scripts/mock-wled.mjs',
+      `${PLAN_PORTS.desk}:desk:Mock Desk`,
+      `${PLAN_PORTS.bulb}:bedroom+bulb:Mock Bulb`,
+      `${PLAN_PORTS.matrix}:desk+matrix=16x8:Mock Matrix`,
+    ],
+    { stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  planMock = proc;
+  await new Promise((resolve, reject) => {
+    proc.once('exit', (code) => reject(new Error(`Raumplan-Mock endete vor dem Start (Code ${code}) – Ports ${PLAN_PORTS.desk}–${PLAN_PORTS.matrix} belegt?`)));
+    proc.stdout.on('data', (d) => d.toString().includes(String(PLAN_PORTS.matrix)) && resolve());
+  });
+}
+
+/** Profil für die Raumplan-Schritte: Plan-Geräte (Standard: drei), Live an, optional ein Plan. */
+function planProfile(
+  plan,
+  devices = [
+    { id: 'dev-desk', host: `127.0.0.1:${PLAN_PORTS.desk}` },
+    { id: 'dev-bulb', host: `127.0.0.1:${PLAN_PORTS.bulb}` },
+    { id: 'dev-matrix', host: `127.0.0.1:${PLAN_PORTS.matrix}` },
+  ],
+) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'wled-client-plan-'));
+  writeFileSync(path.join(dir, 'devices.json'), JSON.stringify(devices));
+  writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'de', planOpen: true }));
+  if (plan) writeFileSync(path.join(dir, 'plan.json'), JSON.stringify(plan));
+  return dir;
+}
+
+// Fenstergröße der Raumplan-Schritte: so viel lässt der Bildschirm des CI-Runners (1024×768 mit Taskleiste) übrig.
+// Die Schritte klicken auf Planpunkte; in derselben Größe landen die Klicks lokal wie in der CI.
+const PLAN_WINDOW = [1024, 720];
+
+/** Hauptfenster einer gestarteten App, sobald beide Fenster da sind, in der Größe PLAN_WINDOW. */
+async function mainWindow(electronApp) {
+  await waitFor(async () => electronApp.windows().length >= 2, 'beide Fenster', 15000);
+  const w = electronApp.windows().find((w) => w.url().includes('index.html'));
+  await electronApp.evaluate(({ BrowserWindow }, [width, height]) => {
+    BrowserWindow.getAllWindows()
+      .find((b) => b.webContents.getURL().includes('index.html'))
+      .setContentSize(width, height);
+  }, PLAN_WINDOW);
+  await w.waitForFunction(([width, height]) => innerWidth === width && innerHeight === height, PLAN_WINDOW, { timeout: 5000 });
+  return w;
+}
+
+/**
+ * Farben der LED-Ebene an Punkten der Bühne (CSS-Pixel relativ zur Bühne): je Punkt der hellste Wert aus 3×3 Pixeln
+ * als [r, g, b] — bei gebrochenem Anzeigemaßstab trifft ein einzelnes Pixel sonst leicht die Lücke. Alle Punkte aus
+ * demselben Bild der Ebene. Nicht bemalt (offline, außerhalb): [0, 0, 0].
+ */
+const ledPixels = (w, points) =>
+  w.evaluate((pts) => {
+    const c = document.querySelector('.plan-leds');
+    const ctx = c.getContext('2d');
+    const k = c.width / c.clientWidth;
+    return pts.map(([px, py]) => {
+      const data = ctx.getImageData(Math.round(px * k) - 1, Math.round(py * k) - 1, 3, 3).data;
+      let best = [0, 0, 0];
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] + data[i + 1] + data[i + 2] > best[0] + best[1] + best[2]) best = [data[i], data[i + 1], data[i + 2]];
+      }
+      return best;
+    });
+  }, points);
+const ledPixel = async (w, x, y) => (await ledPixels(w, [[x, y]]))[0];
 const expect = (cond, msg) => {
   if (!cond) throw new Error(msg);
 };
@@ -924,10 +1005,473 @@ await step('Kaltstart per Link: App startet unsichtbar und führt den Link aus',
     removeDir(fresh);
   }
 });
+try {
+  await startPlanMock();
+} catch (err) {
+  console.log(`\nAbbruch: ${err.message}`);
+  mock.kill();
+  process.exit(2);
+}
+const PLAN_SHOWN = {
+  version: 1,
+  rooms: [{ id: 'r1', name: 'Büro', x: 0, y: 0, w: 22, h: 12 }],
+  items: [
+    { deviceId: 'dev-desk', shape: 'line', points: [[2, 2], [14, 2], [14, 8]], reversed: false },
+    { deviceId: 'dev-bulb', shape: 'point', at: [6, 9] },
+    { deviceId: 'dev-matrix', shape: 'area', rect: { x: 16, y: 2, w: 4, h: 2 } },
+  ],
+};
+
+await step('Raumplan: Anzeige, Live-Farben, Bedienfeld, Wechsel und Neustart', async () => {
+  const dir = planProfile(PLAN_SHOWN);
+  await api(PLAN_PORTS.desk, '/json/state', { on: true, bri: 255, seg: [{ id: 0, fx: 9 }] });
+  // Matrix mit laufendem Effekt: Der Mock malt zeilenweise einen Regenbogen, oben und unten sehen also verschieden aus
+  await api(PLAN_PORTS.matrix, '/json/state', { on: true, bri: 255, seg: [{ id: 0, fx: 9 }] });
+  await api(PLAN_PORTS.bulb, '/json/state', { on: false });
+  let pa = await launch(dir);
+  try {
+    let w = await mainWindow(pa);
+    await w.waitForSelector('.plan-view', { timeout: 15000 });
+    await w.waitForFunction(() => document.querySelectorAll('.plan-item').length === 3, null, { timeout: 15000 });
+    expect((await w.locator('.plan-room-name').textContent()) === 'Büro', 'Raumname fehlt');
+    // Formen aus dem Plan: Linie, Punkt, Fläche
+    for (const [id, shape] of [['dev-desk', 'line'], ['dev-bulb', 'point'], ['dev-matrix', 'area']]) {
+      expect(await w.locator(`.plan-item.plan-${shape}[data-device="${id}"]`).count() === 1, `${id} nicht als ${shape}`);
+    }
+    // Live: Am Anfang der Desk-Linie wechselt die Farbe (wandernder Regenbogen), statische Farben täten das nicht
+    const anchor = async (id) => {
+      const el = w.locator(`.plan-item[data-device="${id}"]`);
+      return [Number(await el.getAttribute('data-x')), Number(await el.getAttribute('data-y'))];
+    };
+    const [dx, dy] = await anchor('dev-desk');
+    let first;
+    await waitFor(async () => {
+      const p = await ledPixel(w, dx, dy);
+      if (p[0] + p[1] + p[2] < 60) return false;
+      first ??= p.join();
+      return p.join() !== first;
+    }, 'Live-Farben am Desk ändern sich', 10000);
+    // Matrix: Das Pixelraster ist wirklich gezeichnet, wenn eine Zelle der obersten und eine der untersten Zeile hell
+    // sind und sich unterscheiden (eine einfarbige Fläche aus den Segmentfarben täte das nicht)
+    const cell = await w
+      .locator('.plan-item[data-device="dev-matrix"] .plan-hit')
+      .evaluate((e) => ({ x: Number(e.getAttribute('x')), y: Number(e.getAttribute('y')), w: Number(e.getAttribute('width')), h: Number(e.getAttribute('height')) }));
+    // Mitte der vierten Zelle (von 16 Spalten) in Zeile 1 und Zeile 8 (von 8)
+    const topCell = [cell.x + (cell.w * 3.5) / 16, cell.y + cell.h / 16];
+    const bottomCell = [cell.x + (cell.w * 3.5) / 16, cell.y + cell.h - cell.h / 16];
+    const bright = (p) => p[0] + p[1] + p[2] > 60;
+    await waitFor(async () => {
+      const [a, b] = await ledPixels(w, [topCell, bottomCell]);
+      return bright(a) && bright(b) && Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) > 60;
+    }, 'Matrix zeigt das Pixelraster (oben und unten helle, verschiedene Farben)', 10000);
+    // Bedienfeld am Bulb: einschalten und Effekt setzen
+    await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
+    await w.waitForSelector('.plan-panel:has-text("Mock Bulb")');
+    await w.click('.plan-panel .toggle');
+    await waitFor(async () => (await state(PLAN_PORTS.bulb)).on, 'Bulb an über das Bedienfeld');
+    const eff = await api(PLAN_PORTS.bulb, '/json/eff');
+    await w.waitForFunction(() => !document.querySelector('.plan-panel select')?.disabled);
+    await w.selectOption('.plan-panel select', 'Rainbow');
+    await waitFor(async () => (await state(PLAN_PORTS.bulb)).seg[0].fx === eff.indexOf('Rainbow'), 'Bulb-Effekt Rainbow');
+    const focused = () => w.evaluate(() => ({ role: document.activeElement?.getAttribute('role'), inPanel: !!document.activeElement?.closest('.plan-panel'), device: document.activeElement?.getAttribute('data-device') }));
+    // Klick auf den Innenabstand des Bedienfelds: Der Fokus bleibt im Feld (tabIndex −1), und Esc bringt ihn zurück auf den Bulb
+    const pbox = await w.locator('.plan-panel').boundingBox();
+    await w.mouse.click(pbox.x + 4, pbox.y + pbox.height - 4);
+    await waitFor(async () => (await focused()).inPanel, 'Fokus bleibt nach einem Klick auf den Rand im Bedienfeld');
+    await w.keyboard.press('Escape');
+    await w.waitForSelector('.plan-panel', { state: 'detached' });
+    await waitFor(async () => (await focused()).device === 'dev-bulb', 'Fokus nach Esc zurück auf dem Bulb');
+    // Tastatur: Fokus auf den Desk, Enter öffnet sein Bedienfeld und setzt den Fokus auf den Schalter darin;
+    // Esc schließt und bringt den Fokus zurück auf den Desk
+    await w.focus('.plan-item[data-device="dev-desk"]');
+    await w.keyboard.press('Enter');
+    await w.waitForSelector('.plan-panel:has-text("Mock Desk")');
+    await waitFor(async () => {
+      const f = await focused();
+      return f.inPanel && f.role === 'switch';
+    }, 'Fokus auf dem Schalter im Bedienfeld');
+    await w.keyboard.press('Escape');
+    await w.waitForSelector('.plan-panel', { state: 'detached' });
+    await waitFor(async () => (await focused()).device === 'dev-desk', 'Fokus zurück auf dem Desk');
+    // Leertaste öffnet wie Enter und schaltet den Schalter nicht gleich mit (der Bulb bleibt an)
+    await w.focus('.plan-item[data-device="dev-bulb"]');
+    await w.keyboard.press('Space');
+    await w.waitForSelector('.plan-panel:has-text("Mock Bulb")');
+    await waitFor(async () => (await focused()).inPanel, 'Fokus im Bedienfeld nach Leertaste');
+    await w.waitForTimeout(400);
+    expect((await state(PLAN_PORTS.bulb)).on, 'Leertaste hat den Schalter mitbetätigt');
+    await w.keyboard.press('Escape');
+    await w.waitForSelector('.plan-panel', { state: 'detached' });
+    // Live-Bilder fordert der Hauptprozess an, solange der Plan sichtbar ist (GET /__live am Mock: empfängt ein Client welche?)
+    const isLive = async (port) => (await api(port, '/__live')).live;
+    await waitFor(async () => (await isLive(PLAN_PORTS.desk)) && (await isLive(PLAN_PORTS.bulb)) && (await isLive(PLAN_PORTS.matrix)), 'Im Plan senden alle drei Geräte Live-Bilder');
+    // Strg+1 verlässt den Plan; die Wahl wird nach 400 ms gespeichert
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.plan-view', { state: 'detached' });
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    // Die Geräteansicht braucht nur das Live-Bild ihres Geräts: Matrix und Bulb hören auf, der Desk bleibt live
+    await waitFor(
+      async () => (await isLive(PLAN_PORTS.desk)) && !(await isLive(PLAN_PORTS.bulb)) && !(await isLive(PLAN_PORTS.matrix)),
+      'Nach dem Verlassen des Plans nur noch der Desk live (Matrix und Bulb nicht)',
+    );
+    await w.waitForTimeout(800);
+    expect(await closeApp(pa, 'Raumplan verlassen'), 'App reagiert nicht auf Beenden');
+    // Neustart: Das Profil beginnt mit planOpen: true — jetzt zeigt die App die Geräteansicht, also wurde das Verlassen gespeichert
+    pa = await launch(dir);
+    w = await mainWindow(pa);
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk', null, { timeout: 15000 });
+    await w.waitForTimeout(500); // ein spät geladener Zustand dürfte den Plan nicht doch noch öffnen
+    expect((await w.locator('.plan-view').count()) === 0, 'Raumplan nach dem Verlassen wieder offen');
+    // Der Eintrag in der Seitenleiste führt zurück; auch das wird gespeichert
+    await w.click('.plan-row');
+    await w.waitForSelector('.plan-view');
+    await w.waitForTimeout(800);
+    expect(await closeApp(pa, 'Raumplan Seitenleiste'), 'App reagiert nicht auf Beenden');
+    // Neustart: Raumplan wieder gewählt, Plan unverändert
+    pa = await launch(dir);
+    w = await mainWindow(pa);
+    await w.waitForSelector('.plan-view', { timeout: 15000 });
+    await w.waitForFunction(() => document.querySelectorAll('.plan-item').length === 3, null, { timeout: 15000 });
+    expect(await closeApp(pa, 'Raumplan Neustart'), 'App reagiert nicht auf Beenden');
+  } finally {
+    await closeApp(pa, 'Raumplan');
+    removeDir(dir);
+  }
+});
+
+await step('Raumplan: Offline-Gerät hat gestrichelte Kontur und „offline“, aber keine Farben', async () => {
+  // Hinter dem Gerät lauscht nichts, es bleibt offline; der Bulb daneben leuchtet als Gegenprobe
+  const dir = planProfile(
+    {
+      version: 1,
+      rooms: [{ id: 'r1', name: 'Büro', x: 0, y: 0, w: 22, h: 12 }],
+      items: [
+        { deviceId: 'dev-gone', shape: 'line', points: [[2, 2], [14, 2]], reversed: false },
+        { deviceId: 'dev-bulb', shape: 'point', at: [6, 9] },
+      ],
+    },
+    [
+      { id: 'dev-gone', host: `127.0.0.1:${GONE_PORT}`, alias: 'Mock Gone' },
+      { id: 'dev-bulb', host: `127.0.0.1:${PLAN_PORTS.bulb}` },
+    ],
+  );
+  await api(PLAN_PORTS.bulb, '/json/state', { on: true, bri: 255, seg: [{ id: 0, fx: 9 }] });
+  const pa = await launch(dir);
+  try {
+    const w = await mainWindow(pa);
+    await w.waitForSelector('.plan-view', { timeout: 15000 });
+    const label = (id) => w.locator(`.plan-item[data-device="${id}"] .plan-label`).textContent();
+    await waitFor(async () => (await label('dev-gone')) === 'Mock Gone (offline)', 'Name mit „(offline)“ am Offline-Gerät', 15000);
+    expect((await label('dev-bulb')) === 'Mock Bulb', 'Online-Gerät trägt „(offline)“');
+    const dash = await w.locator('.plan-item[data-device="dev-gone"] .plan-track').evaluate((e) => getComputedStyle(e).strokeDasharray);
+    expect(dash !== 'none', 'Kontur des Offline-Geräts nicht gestrichelt');
+    const at = async (id) => {
+      const el = w.locator(`.plan-item[data-device="${id}"]`);
+      return [Number(await el.getAttribute('data-x')), Number(await el.getAttribute('data-y'))];
+    };
+    const [gx, gy] = await at('dev-gone');
+    const [bx, by] = await at('dev-bulb');
+    await waitFor(async () => (await ledPixel(w, bx, by)).reduce((a, b) => a + b, 0) > 60, 'Bulb leuchtet live', 10000);
+    await w.waitForTimeout(300);
+    // „Aus“ malt dunkelgrau; offline bleibt die Ebene unbemalt
+    const p = await ledPixel(w, gx, gy);
+    expect(p.join() === '0,0,0', `Offline-Gerät ist bemalt: ${p}`);
+    expect(await closeApp(pa, 'Raumplan offline'), 'App reagiert nicht auf Beenden');
+  } finally {
+    await closeApp(pa, 'Raumplan offline');
+    removeDir(dir);
+  }
+});
+
+/**
+ * Bildschirmpunkt (Viewport) zu Rastereinheiten des Plans, aus den Daten am SVG. Ein Punkt außerhalb der Bühne scheitert
+ * sofort: Ein Klick dorthin ginge ins Leere, und der Schritt liefe erst viel später in eine Zeitüberschreitung.
+ */
+const planPx = async (w, ux, uy) => {
+  const [px, py, inside] = await w.evaluate(
+    ([x, y]) => {
+      const s = document.querySelector('.plan-svg');
+      const r = s.getBoundingClientRect();
+      const k = Number(s.dataset.scale);
+      const px = r.left + x * k + Number(s.dataset.ox);
+      const py = r.top + y * k + Number(s.dataset.oy);
+      return [px, py, px >= r.left && px <= r.right && py >= r.top && py <= r.bottom];
+    },
+    [ux, uy],
+  );
+  expect(inside, `Planpunkt (${ux}, ${uy}) liegt außerhalb der Bühne`);
+  return [px, py];
+};
+
+/**
+ * Wartet, bis der Ausschnitt des Plans nach dem Wechsel in den Bearbeitungsmodus steht: Die Seitenliste verkleinert die
+ * Bühne, und der Plan passt sich erst danach an (Maßstab und Versatz am SVG bleiben zwei Abfragen lang gleich).
+ */
+const planSettled = async (w) => {
+  await w.waitForSelector('.plan-side');
+  let last = '';
+  await waitFor(async () => {
+    const now = await w.evaluate(() => {
+      const s = document.querySelector('.plan-svg');
+      return s ? [s.dataset.scale, s.dataset.ox, s.dataset.oy, s.getAttribute('width')].join() : '';
+    });
+    const same = !!now && now === last;
+    last = now;
+    return same;
+  }, 'Ausschnitt des Plans steht', 6000);
+};
+
+await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Gerät', async () => {
+  const dir = planProfile();
+  const planFile = path.join(dir, 'plan.json');
+  const saved = () => {
+    try {
+      return JSON.parse(readFileSync(planFile, 'utf8'));
+    } catch {
+      return null;
+    }
+  };
+  const pa = await launch(dir);
+  try {
+    const w = await mainWindow(pa);
+    await w.waitForSelector('.plan-view .empty', { timeout: 15000 });
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    await w.waitForFunction(() => document.querySelectorAll('.plan-side-item').length === 3);
+    // Raum aufziehen und benennen. Der leere Plan zeigt in PLAN_WINDOW nur bis etwa Einheit 14 in der Breite.
+    await w.click('.plan-room-btn');
+    const a = await planPx(w, 1, 1);
+    const b = await planPx(w, 13, 10);
+    await w.mouse.move(a[0], a[1]);
+    await w.mouse.down();
+    await w.mouse.move(b[0], b[1], { steps: 6 });
+    await w.mouse.up();
+    // Enter ohne Namen lässt das Feld stehen (Esc verwürfe den Raum)
+    await w.waitForSelector('.plan-name-input');
+    await w.keyboard.press('Enter');
+    expect((await w.locator('.plan-name-input').count()) === 1, 'Enter ohne Namen hat das Feld geschlossen');
+    await w.fill('.plan-name-input', 'Büro');
+    await w.keyboard.press('Enter');
+    await w.waitForSelector('.plan-room-name:has-text("Büro")');
+    // Desk als Linie mit einem Knick
+    await w.click('.plan-side-item:has-text("Mock Desk")');
+    for (const [ux, uy] of [[2, 2], [12, 2]]) {
+      const p = await planPx(w, ux, uy);
+      await w.mouse.click(p[0], p[1]);
+    }
+    const end = await planPx(w, 12, 8);
+    await w.mouse.dblclick(end[0], end[1]);
+    // Bulb als Punkt, Matrix als Fläche (unter dem Raum, rechts bündig mit ihm)
+    await w.click('.plan-side-item:has-text("Mock Bulb")');
+    const pb = await planPx(w, 6, 7);
+    await w.mouse.click(pb[0], pb[1]);
+    await w.click('.plan-side-item:has-text("Mock Matrix")');
+    const pm = await planPx(w, 9, 13);
+    await w.mouse.click(pm[0], pm[1]);
+    await w.waitForFunction(() => document.querySelectorAll('.plan-side-item').length === 0);
+    await w.click('.plan-done-btn');
+    await waitFor(() => saved()?.items?.length === 3, 'plan.json mit drei Geräten', 6000);
+    const plan = saved();
+    expect(JSON.stringify(plan.rooms) === JSON.stringify([{ id: plan.rooms[0]?.id, name: 'Büro', x: 1, y: 1, w: 12, h: 9 }]), `Raum: ${JSON.stringify(plan.rooms)}`);
+    const byId = Object.fromEntries(plan.items.map((i) => [i.deviceId, i]));
+    expect(JSON.stringify(byId['dev-desk']) === JSON.stringify({ deviceId: 'dev-desk', shape: 'line', points: [[2, 2], [12, 2], [12, 8]], reversed: false }), `Desk: ${JSON.stringify(byId['dev-desk'])}`);
+    expect(JSON.stringify(byId['dev-bulb']) === JSON.stringify({ deviceId: 'dev-bulb', shape: 'point', at: [6, 7] }), `Bulb: ${JSON.stringify(byId['dev-bulb'])}`);
+    expect(JSON.stringify(byId['dev-matrix']) === JSON.stringify({ deviceId: 'dev-matrix', shape: 'area', rect: { x: 5, y: 11, w: 8, h: 4 } }), `Matrix: ${JSON.stringify(byId['dev-matrix'])}`);
+    // Verwerfen: Raum verschieben und verwerfen → Datei und Anzeige unverändert
+    const before = JSON.stringify(saved());
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    const r1 = await planPx(w, 8, 9.5);
+    const r2 = await planPx(w, 10, 9.5);
+    await w.mouse.move(r1[0], r1[1]);
+    await w.mouse.down();
+    await w.mouse.move(r2[0], r2[1], { steps: 4 });
+    await w.mouse.up();
+    // Der Zug hat wirklich etwas geändert (sonst verwürfe der Test nichts)
+    expect(await w.locator('.plan-undo-btn').isEnabled(), 'Der Raum-Zug hat nichts geändert');
+    await w.click('.plan-discard-btn');
+    await w.waitForSelector('.plan-side', { state: 'detached' });
+    await w.waitForTimeout(500);
+    expect(JSON.stringify(saved()) === before, 'Verwerfen hat gespeichert');
+    const itemAt = (id) =>
+      w.evaluate((id) => {
+        const el = document.querySelector(`.plan-item[data-device="${id}"]`);
+        const r = document.querySelector('.plan-svg').getBoundingClientRect();
+        return [r.left + Number(el.dataset.x), r.top + Number(el.dataset.y)];
+      }, id);
+    // Rückgängig: Desk wählen (an der ersten LED — die Mitte des Umrisses einer L-Linie liegt nicht auf ihr), Entf, Strg+Z
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    const deskAt = await itemAt('dev-desk');
+    await w.mouse.click(deskAt[0], deskAt[1]);
+    await w.keyboard.press('Delete');
+    await w.waitForFunction(() => !document.querySelector('.plan-item[data-device="dev-desk"]'));
+    await w.keyboard.press('Control+z');
+    await w.waitForSelector('.plan-item[data-device="dev-desk"]');
+    // Ein Zug nach einem früheren Schritt bleibt ein eigener Schritt: Bulb schieben, dann den Raum langsam ziehen
+    // (der erste Zwischenschritt ändert nichts); ein Strg+Z nimmt nur den Zug zurück, der Bulb-Schritt bleibt
+    await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
+    await w.keyboard.press('ArrowRight');
+    const q1 = await planPx(w, 8, 9.5);
+    const q2 = await planPx(w, 10, 9.5);
+    await w.mouse.move(q1[0], q1[1]);
+    await w.mouse.down();
+    await w.mouse.move(q2[0], q2[1], { steps: 10 });
+    await w.mouse.up();
+    await w.keyboard.press('Control+z');
+    expect(await w.locator('.plan-undo-btn').isEnabled(), 'Strg+Z nach dem Zug hat auch den Schritt davor zurückgenommen');
+    // Nur Strg+Z macht rückgängig, Strg+Umschalt+Z nicht
+    await w.keyboard.press('Control+Shift+z');
+    expect(await w.locator('.plan-undo-btn').isEnabled(), 'Strg+Umschalt+Z hat rückgängig gemacht');
+    // Rückfrage beim Verlassen mit Änderungen
+    await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
+    await w.keyboard.press('ArrowRight');
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.modal:has-text("Änderungen speichern?")');
+    await w.click('.modal .btn.ghost');
+    await w.waitForSelector('.modal', { state: 'detached' });
+    expect(await w.locator('.plan-side').count() === 1, 'Abbrechen hat den Plan verlassen');
+    await w.keyboard.press('Control+1');
+    await w.click('.modal .btn:has-text("Verwerfen")');
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    expect(JSON.stringify(saved()) === before, 'Verwerfen über die Rückfrage hat gespeichert');
+    // Rückfrage mit „Speichern“: Bulb um eine Einheit schieben, Strg+1, speichern → Geräteansicht und plan.json
+    const bulbSaved = () => JSON.stringify(saved()?.items?.find((i) => i.deviceId === 'dev-bulb'));
+    await w.click('.plan-row');
+    await w.waitForSelector('.plan-view');
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
+    await w.keyboard.press('ArrowRight');
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.modal:has-text("Änderungen speichern?")');
+    await w.click('.modal .btn.primary');
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    await waitFor(() => bulbSaved() === JSON.stringify({ deviceId: 'dev-bulb', shape: 'point', at: [7, 7] }), 'Bulb über die Rückfrage gespeichert', 6000);
+    // „Neu zeichnen“ zeichnet gleich eine Linie, auch bei einem Gerät mit einer LED (die Liste käme mit der Punktform zurück)
+    await w.click('.plan-row');
+    await w.waitForSelector('.plan-view');
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    const bc = await planPx(w, 7, 7);
+    await w.mouse.click(bc[0], bc[1], { button: 'right' });
+    await w.click('.plan-menu button:has-text("Als Linie darstellen")');
+    await w.mouse.click(bc[0], bc[1], { button: 'right' });
+    await w.click('.plan-menu button:has-text("Neu zeichnen")');
+    expect((await w.locator('.plan-side-item:has-text("Mock Bulb")').count()) === 0, 'Das Gerät steht beim Neuzeichnen in der Liste');
+    for (const [ux, uy] of [[3, 8], [9, 8]]) {
+      const p = await planPx(w, ux, uy);
+      await w.mouse.click(p[0], p[1]);
+    }
+    // Fertig mit unfertiger Linie (zwei Punkte) speichert sie mit
+    await w.click('.plan-done-btn');
+    await waitFor(() => bulbSaved() === JSON.stringify({ deviceId: 'dev-bulb', shape: 'line', points: [[3, 8], [9, 8]], reversed: false }), 'Bulb als neu gezeichnete Linie', 6000);
+    // Eine Linie in Arbeit zählt als Änderung: Desk aus dem Plan nehmen, neu zeichnen (zwei Punkte), Strg+1 fragt, Speichern legt sie an
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    const dk = await itemAt('dev-desk');
+    await w.mouse.click(dk[0], dk[1]);
+    await w.keyboard.press('Delete');
+    await w.click('.plan-done-btn');
+    await waitFor(() => saved()?.items?.length === 2, 'Desk aus dem Plan genommen', 6000);
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    await w.click('.plan-side-item:has-text("Mock Desk")');
+    for (const [ux, uy] of [[4, 9], [10, 9]]) {
+      const p = await planPx(w, ux, uy);
+      await w.mouse.click(p[0], p[1]);
+    }
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.modal:has-text("Änderungen speichern?")');
+    await w.click('.modal .btn.primary');
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    const deskSaved = () => JSON.stringify(saved()?.items?.find((i) => i.deviceId === 'dev-desk'));
+    await waitFor(() => deskSaved() === JSON.stringify({ deviceId: 'dev-desk', shape: 'line', points: [[4, 9], [10, 9]], reversed: false }), 'Linie in Arbeit über die Rückfrage gespeichert', 6000);
+    // Gerät in der App gelöscht, während der Plan bearbeitet wird → verschwindet sofort, auch mit Strg+Z nicht wieder da
+    await w.click('.plan-row');
+    await w.waitForSelector('.plan-view');
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    // Ziehen aus „Noch nicht im Plan“: Matrix aus dem Plan nehmen und aus der Liste an dieselbe Stelle ziehen
+    const ma = await planPx(w, 9, 13);
+    await w.mouse.click(ma[0], ma[1], { button: 'right' });
+    await w.click('.plan-menu button:has-text("Aus dem Plan entfernen")');
+    await w.waitForFunction(() => !document.querySelector('.plan-item[data-device="dev-matrix"]'));
+    const stageBox = await w.locator('.plan-stage').boundingBox();
+    await w.locator('.plan-side-item:has-text("Mock Matrix")').dragTo(w.locator('.plan-stage'), { targetPosition: { x: ma[0] - stageBox.x, y: ma[1] - stageBox.y } });
+    await w.waitForSelector('.plan-item[data-device="dev-matrix"]', { timeout: 4000 });
+    const dropped = await itemAt('dev-matrix');
+    expect(Math.abs(dropped[0] - ma[0]) < 3 && Math.abs(dropped[1] - ma[1]) < 3, `Die Matrix liegt nach dem Ziehen bei ${dropped.map(Math.round)}, nicht bei ${ma.map(Math.round)}`);
+    expect((await w.locator('.plan-side-item:has-text("Mock Matrix")').count()) === 0, 'Die Matrix steht nach dem Ziehen noch in der Liste');
+    // Das Kontextmenü bleibt in der Bühne, auch am rechten Rand (die Matrix reicht wie der Raum bis Einheit 13)
+    const mx = await planPx(w, 12.5, 14.5);
+    await w.mouse.click(mx[0], mx[1], { button: 'right' });
+    await w.waitForSelector('.plan-menu');
+    const inStage = await w.evaluate(() => {
+      const m = document.querySelector('.plan-menu').getBoundingClientRect();
+      const st = document.querySelector('.plan-stage').getBoundingClientRect();
+      return m.left >= st.left && m.top >= st.top && m.right <= st.right && m.bottom <= st.bottom;
+    });
+    expect(inStage, 'Das Kontextmenü ragt aus der Bühne');
+    await w.keyboard.press('Escape');
+    await w.waitForSelector('.plan-menu', { state: 'detached' });
+    const bm = await planPx(w, 7, 8);
+    await w.mouse.click(bm[0], bm[1]);
+    await w.keyboard.press('ArrowDown');
+    await w.evaluate(() => window.wled.removeDevice('dev-bulb'));
+    await w.waitForFunction(() => !document.querySelector('.plan-item[data-device="dev-bulb"]'), null, { timeout: 6000 });
+    await w.keyboard.press('Control+z');
+    await w.waitForTimeout(300);
+    expect((await w.locator('.plan-item[data-device="dev-bulb"]').count()) === 0, 'Strg+Z hat das gelöschte Gerät zurückgebracht');
+    await w.click('.plan-done-btn');
+    await waitFor(() => saved()?.items?.length === 2, 'Bulb aus plan.json entfernt', 6000);
+    // Erst wenn das Bearbeiten beendet ist, darf Strg+1 kommen (sonst fragt es noch nach Änderungen)
+    await w.waitForSelector('.plan-side', { state: 'detached' });
+    // Die hineingezogene Matrix liegt genau dort, wo sie vorher lag (Einrasten aufs Raster, wie beim Anklicken)
+    const matrixRect = JSON.stringify(saved().items.find((i) => i.deviceId === 'dev-matrix')?.rect);
+    expect(matrixRect === JSON.stringify({ x: 5, y: 11, w: 8, h: 4 }), `Matrix nach dem Ziehen: ${matrixRect}`);
+    // Ohne Bearbeiten: ein gelöschtes Gerät verschwindet ebenfalls aus dem Plan
+    await w.keyboard.press('Control+1');
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    await w.evaluate(() => window.wled.removeDevice('dev-matrix'));
+    await waitFor(() => saved()?.items?.length === 1, 'Matrix aus plan.json entfernt', 6000);
+    await w.click('.plan-row');
+    await w.waitForFunction(() => document.querySelectorAll('.plan-item').length === 1);
+    // Speichern scheitert (der Hauptprozess antwortet mit einem Fehler): Meldung, die Bearbeitung bleibt offen, und
+    // auch die Rückfrage hängt danach nicht. Der Handler bleibt ersetzt — das ist das Ende des Schritts.
+    const deskLine = JSON.stringify(saved().items[0]);
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    const d1 = await itemAt('dev-desk');
+    await w.mouse.click(d1[0], d1[1]);
+    await w.keyboard.press('ArrowRight');
+    await pa.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('plan-set');
+      ipcMain.handle('plan-set', () => {
+        throw new Error('Test');
+      });
+    });
+    await w.click('.plan-done-btn');
+    await w.waitForSelector('.toasts:has-text("Speichern fehlgeschlagen")');
+    expect((await w.locator('.plan-side').count()) === 1, 'Fertig hat trotz Fehler beim Speichern beendet');
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.modal:has-text("Änderungen speichern?")');
+    await w.click('.modal .btn.primary');
+    await w.waitForSelector('.modal', { state: 'detached' });
+    expect((await w.locator('.plan-side').count()) === 1, 'Die Rückfrage hat trotz Fehler beim Speichern den Plan verlassen');
+    expect(JSON.stringify(saved().items[0]) === deskLine, 'Fehlgeschlagenes Speichern hat die Datei geändert');
+    expect(await closeApp(pa, 'Raumplan zeichnen'), 'App reagiert nicht auf Beenden');
+  } finally {
+    await closeApp(pa, 'Raumplan zeichnen');
+    removeDir(dir);
+  }
+});
+
 await step('Keine unerwarteten Fehler im Hauptprozess', async () => {
   expect(!mainErrors.length, `${mainErrors.length}× – ${mainErrors[0]}`);
 });
 mock.kill();
+planMock.kill();
 clearTimeout(watchdog);
 
 console.log(`\n${results.join('\n')}`);

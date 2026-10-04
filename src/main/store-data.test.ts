@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, checkGroup, cleanDevices, cleanGroups, cleanSettings } from './store-data';
+import { afterAll, describe, expect, it } from 'vitest';
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { DEFAULT_SETTINGS, checkGroup, cleanDevices, cleanGroups, cleanPlan, cleanSettings, readPlanFile } from './store-data';
 
 describe('cleanDevices', () => {
   it('gibt ohne Liste eine leere Liste zurück', () => {
@@ -60,6 +63,11 @@ describe('cleanSettings', () => {
     expect(cleanSettings({ allowLinks: 'ja' })).toEqual({});
   });
 
+  it('übernimmt planOpen nur als Boolean', () => {
+    expect(cleanSettings({ planOpen: true })).toEqual({ planOpen: true });
+    expect(cleanSettings({ planOpen: 1 })).toEqual({});
+  });
+
   it('übernimmt Design und Sprache nur mit erlaubten Werten', () => {
     expect(cleanSettings({ theme: 'dark', language: 'en' })).toEqual({ theme: 'dark', language: 'en' });
     expect(cleanSettings({ theme: 'light', language: 'system' })).toEqual({ theme: 'light', language: 'system' });
@@ -84,7 +92,7 @@ describe('cleanSettings', () => {
 
 describe('DEFAULT_SETTINGS', () => {
   it('hat die bisherigen Standardwerte', () => {
-    expect(DEFAULT_SETTINGS).toEqual({ closeToTray: true, startWithWindows: false, liveView: false, theme: 'system', language: 'system', autoUpdate: true, allowLinks: false });
+    expect(DEFAULT_SETTINGS).toEqual({ closeToTray: true, startWithWindows: false, liveView: false, theme: 'system', language: 'system', autoUpdate: true, allowLinks: false, planOpen: false });
   });
 
   it('besteht die eigene Prüfung unverändert', () => {
@@ -163,5 +171,159 @@ describe('checkGroup', () => {
     for (const members of [[], ['x'], 'a', undefined]) {
       expect(checkGroup({ name: 'Nacht', members }, groups, ids)).toEqual({ ok: false, error: 'Bitte mindestens ein Gerät auswählen.' });
     }
+  });
+});
+
+describe('cleanPlan', () => {
+  const ids = ['a', 'b', 'c'];
+  const room = { id: 'r1', name: ' Office ', x: 0, y: 0, w: 10, h: 8 };
+
+  it('übernimmt einen gültigen Plan und rundet auf 0,1', () => {
+    const raw = {
+      version: 1,
+      rooms: [room],
+      items: [
+        { deviceId: 'a', shape: 'line', points: [[1.04, 2], [5, 2.06]], reversed: true },
+        { deviceId: 'b', shape: 'point', at: [3, 4] },
+        { deviceId: 'c', shape: 'area', rect: { x: 1, y: 1, w: 2, h: 1 } },
+      ],
+    };
+    expect(cleanPlan(raw, ids)).toEqual({
+      version: 1,
+      rooms: [{ id: 'r1', name: 'Office', x: 0, y: 0, w: 10, h: 8 }],
+      items: [
+        { deviceId: 'a', shape: 'line', points: [[1, 2], [5, 2.1]], reversed: true },
+        { deviceId: 'b', shape: 'point', at: [3, 4] },
+        { deviceId: 'c', shape: 'area', rect: { x: 1, y: 1, w: 2, h: 1 } },
+      ],
+    });
+  });
+
+  it('kein Objekt oder falsche Version → leerer Plan', () => {
+    expect(cleanPlan(null, ids)).toEqual({ version: 1, rooms: [], items: [] });
+    expect(cleanPlan({ version: 2, rooms: [room], items: [] }, ids)).toEqual({ version: 1, rooms: [], items: [] });
+  });
+
+  it('Räume: ohne Namen, zu klein, außerhalb des Bereichs oder doppelte id fallen weg; Name höchstens 40 Zeichen', () => {
+    const rooms = [
+      { ...room, id: 'x1', name: '  ' },
+      { ...room, id: 'x2', w: 1.9 },
+      { ...room, id: 'x3', x: 995 },
+      room,
+      { ...room, name: 'Doppelt' },
+      { ...room, id: 'x4', name: 'N'.repeat(50) },
+    ];
+    const out = cleanPlan({ version: 1, rooms, items: [] }, ids).rooms;
+    expect(out.map((r) => r.id)).toEqual(['r1', 'x4']);
+    expect(out[1].name).toHaveLength(40);
+  });
+
+  it('höchstens 100 Räume', () => {
+    const rooms = Array.from({ length: 120 }, (_, i) => ({ ...room, id: `r${i}` }));
+    expect(cleanPlan({ version: 1, rooms, items: [] }, ids).rooms).toHaveLength(100);
+  });
+
+  it('Geräte: unbekannt, doppelt, kaputte Form oder zu viele Punkte fallen weg', () => {
+    const items = [
+      { deviceId: 'zz', shape: 'point', at: [1, 1] },
+      { deviceId: 'a', shape: 'point', at: [1, 1] },
+      { deviceId: 'a', shape: 'point', at: [2, 2] },
+      { deviceId: 'b', shape: 'line', points: [[1, 1]] },
+      { deviceId: 'c', shape: 'line', points: Array.from({ length: 101 }, (_, i) => [i, 0]) },
+    ];
+    expect(cleanPlan({ version: 1, rooms: [], items }, ids).items).toEqual([{ deviceId: 'a', shape: 'point', at: [1, 1] }]);
+  });
+
+  it('Typfehler und Werte außerhalb −1000…1000 fallen weg', () => {
+    const items = [
+      { deviceId: 'a', shape: 'point', at: ['1', 1] },
+      { deviceId: 'b', shape: 'point', at: [1001, 0] },
+      { deviceId: 'c', shape: 'area', rect: { x: 0, y: 0, w: 0.5, h: 1 } },
+    ];
+    expect(cleanPlan({ version: 1, rooms: [], items }, ids).items).toEqual([]);
+  });
+
+  it('NaN und Infinity als Koordinaten fallen weg', () => {
+    const items = [
+      { deviceId: 'a', shape: 'point', at: [NaN, 1] },
+      { deviceId: 'b', shape: 'point', at: [1, Infinity] },
+      { deviceId: 'c', shape: 'line', points: [[0, 0], [-Infinity, 1]] },
+    ];
+    const rooms = [{ ...room, id: 'n1', x: NaN }, { ...room, id: 'n2', w: Infinity }];
+    expect(cleanPlan({ version: 1, rooms, items }, ids)).toEqual({ version: 1, rooms: [], items: [] });
+  });
+
+  it('Grenzwerte werden angenommen: Punkt bei ±1000, Linie mit 100 Punkten, Raum 2 × 2, Raum bis 1000', () => {
+    const line = Array.from({ length: 100 }, (_, i) => [i, 0]);
+    const raw = {
+      version: 1,
+      rooms: [
+        { id: 'min', name: 'Min', x: 0, y: 0, w: 2, h: 2 },
+        { id: 'edge', name: 'Edge', x: 990, y: -1000, w: 10, h: 2 },
+      ],
+      items: [
+        { deviceId: 'a', shape: 'point', at: [1000, -1000] },
+        { deviceId: 'b', shape: 'point', at: [-1000, 1000] },
+        { deviceId: 'c', shape: 'line', points: line },
+      ],
+    };
+    const out = cleanPlan(raw, ids);
+    expect(out.rooms.map((r) => r.id)).toEqual(['min', 'edge']);
+    expect(out.items.map((i) => i.deviceId)).toEqual(['a', 'b', 'c']);
+    expect(out.items[2]).toMatchObject({ shape: 'line' });
+    expect((out.items[2] as { points: unknown[] }).points).toHaveLength(100);
+  });
+
+  it('reversed fehlt → false', () => {
+    const items = [{ deviceId: 'a', shape: 'line', points: [[0, 0], [1, 0]] }];
+    expect(cleanPlan({ version: 1, rooms: [], items }, ids).items[0]).toEqual({ deviceId: 'a', shape: 'line', points: [[0, 0], [1, 0]], reversed: false });
+  });
+});
+
+describe('readPlanFile', () => {
+  const dirs: string[] = [];
+  const dir = () => {
+    const d = mkdtempSync(path.join(tmpdir(), 'wled-plan-'));
+    dirs.push(d);
+    return d;
+  };
+  afterAll(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('fehlende Datei → leerer Plan', () => {
+    expect(readPlanFile(path.join(dir(), 'plan.json'), [])).toEqual({ version: 1, rooms: [], items: [] });
+  });
+
+  it('liest und prüft eine vorhandene Datei', () => {
+    const file = path.join(dir(), 'plan.json');
+    writeFileSync(file, JSON.stringify({ version: 1, rooms: [], items: [{ deviceId: 'a', shape: 'point', at: [1, 2] }, { deviceId: 'x', shape: 'point', at: [1, 2] }] }));
+    expect(readPlanFile(file, ['a']).items).toEqual([{ deviceId: 'a', shape: 'point', at: [1, 2] }]);
+  });
+
+  it('kaputtes JSON → leerer Plan, Datei als plan.json.broken beiseitegelegt', () => {
+    const file = path.join(dir(), 'plan.json');
+    writeFileSync(file, '{ kaputt');
+    expect(readPlanFile(file, [])).toEqual({ version: 1, rooms: [], items: [] });
+    expect(existsSync(file)).toBe(false);
+    expect(readFileSync(`${file}.broken`, 'utf8')).toBe('{ kaputt');
+  });
+
+  it('gültiges JSON, aber kein Plan oder andere Version → leerer Plan, Datei als plan.json.broken beiseitegelegt', () => {
+    for (const text of ['[]', 'null', '5', JSON.stringify({ version: 2, rooms: [], items: [] })]) {
+      const file = path.join(dir(), 'plan.json');
+      writeFileSync(file, text);
+      expect(readPlanFile(file, [])).toEqual({ version: 1, rooms: [], items: [] });
+      expect(existsSync(file)).toBe(false);
+      expect(readFileSync(`${file}.broken`, 'utf8')).toBe(text);
+    }
+  });
+
+  it('ein brauchbarer Plan bleibt liegen', () => {
+    const file = path.join(dir(), 'plan.json');
+    writeFileSync(file, JSON.stringify({ version: 1, rooms: [], items: [] }));
+    readPlanFile(file, []);
+    expect(existsSync(file)).toBe(true);
+    expect(existsSync(`${file}.broken`)).toBe(false);
   });
 });

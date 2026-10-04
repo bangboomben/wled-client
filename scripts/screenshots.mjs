@@ -70,6 +70,25 @@ writeFileSync(
 writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'en' }));
 // Beispielgruppe: TV Wall + Bedroom (Fantasie-Geräte, siehe DEVICES)
 writeFileSync(path.join(userData, 'groups.json'), JSON.stringify([{ id: 'shot-group', name: 'Ambient', members: ['shot-1', 'shot-2'] }]));
+// Raumplan mit erfundenen Räumen (nur für plan.png)
+writeFileSync(
+  path.join(userData, 'plan.json'),
+  JSON.stringify({
+    version: 1,
+    rooms: [
+      { id: 'room-office', name: 'Office', x: 0, y: 0, w: 14, h: 10 },
+      { id: 'room-living', name: 'Living room', x: 14, y: 0, w: 18, h: 10 },
+      { id: 'room-bedroom', name: 'Bedroom', x: 0, y: 10, w: 14, h: 9 },
+      { id: 'room-kitchen', name: 'Kitchen', x: 14, y: 10, w: 10, h: 9 },
+    ],
+    items: [
+      { deviceId: 'shot-0', shape: 'line', points: [[2, 2], [11, 2], [11, 6]], reversed: false },
+      { deviceId: 'shot-1', shape: 'line', points: [[17, 1], [29, 1]], reversed: false },
+      { deviceId: 'shot-2', shape: 'line', points: [[2, 17], [2, 12], [9, 12]], reversed: false },
+      { deviceId: 'shot-3', shape: 'line', points: [[15, 12], [23, 12]], reversed: false },
+    ],
+  }),
+);
 
 const launchedAt = Date.now();
 const app = await electron.launch({
@@ -128,6 +147,15 @@ async function shoot(win, fly, select) {
   await select('Bedroom', 'colors');
   await win.screenshot({ path: path.join(OUT, 'light.png') });
   await win.emulateMedia({ colorScheme: 'dark' });
+
+  // Das Schlafzimmer ist für die anderen Bilder gedimmt; im Plan soll seine Linie gut zu sehen sein
+  await post(bedroom, { bri: 200 });
+  await win.click('.plan-row');
+  await win.waitForSelector('.plan-view');
+  await win.waitForFunction(() => document.querySelectorAll('.plan-item').length === 4);
+  await win.mouse.move(5, 400);
+  await win.waitForTimeout(2000);
+  await win.screenshot({ path: path.join(OUT, 'plan.png') });
 
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()

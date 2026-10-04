@@ -2188,3 +2188,287 @@ body.is-flyout #root {
 .update-row .row-actions {
   margin-top: 8px;
 }
+
+/* ------------------------------------------------------------------ Raumplan */
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 6px;
+  padding: 9px 10px;
+  border-radius: var(--radius);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.plan-row:hover:not(.active) {
+  background: var(--panel-2);
+}
+
+.plan-row.active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.plan-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  /* wie Titel und Werkzeugleiste: 24 px Rand */
+  padding: 0 24px 24px;
+}
+
+.plan-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.plan-svg,
+.plan-leds {
+  position: absolute;
+  inset: 0;
+}
+
+.plan-svg {
+  display: block;
+  user-select: none;
+  touch-action: none;
+}
+
+.plan-svg.crosshair {
+  cursor: crosshair;
+}
+
+.plan-leds {
+  pointer-events: none;
+}
+
+.plan-grid line {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.plan-room {
+  fill: transparent;
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+}
+
+.plan-svg.editing .plan-room {
+  cursor: move;
+}
+
+.plan-room-g.selected .plan-room {
+  stroke: var(--accent);
+}
+
+.plan-room-name {
+  fill: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.plan-track {
+  fill: none;
+  stroke: var(--panel-3);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Mit Elementtyp: Die Gruppe eines Geräts heißt selbst plan-point bzw. plan-area und darf nichts davon erben */
+circle.plan-point,
+rect.plan-area {
+  fill: var(--panel-3);
+  stroke: var(--border-strong);
+}
+
+.plan-item.offline .plan-track,
+.plan-item.offline .plan-point,
+.plan-item.offline .plan-area {
+  stroke: var(--muted);
+  stroke-dasharray: 4 4;
+}
+
+.plan-item.offline .plan-track {
+  stroke-width: 2;
+  /* Runde Enden füllten bei 2 px Strichstärke die Lücken der Striche fast zu */
+  stroke-linecap: butt;
+}
+
+.plan-item.selected .plan-track,
+.plan-item.selected .plan-point,
+.plan-item.selected .plan-area,
+.plan-item:focus-visible .plan-track,
+.plan-item:focus-visible .plan-point,
+.plan-item:focus-visible .plan-area {
+  stroke: var(--accent);
+}
+
+/* Kein UA-Rahmen um die ganze Gruppe (auch nicht nach einem Mausklick); Tastaturfokus zeigt der Akzentstrich oben */
+.plan-item:focus {
+  outline: none;
+}
+
+.plan-label {
+  fill: var(--text-2);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.plan-tick {
+  stroke: var(--text-2);
+  stroke-width: 2;
+}
+
+.plan-arrow {
+  fill: var(--text-2);
+}
+
+/* Nur Klickflächen, Anfasser und Räume nehmen Zeiger an — Zierelemente nicht */
+.plan-track,
+circle.plan-point,
+rect.plan-area,
+.plan-tick,
+.plan-arrow {
+  pointer-events: none;
+}
+
+.plan-hit {
+  fill: transparent;
+  stroke: transparent;
+  cursor: pointer;
+}
+
+/* Bei Linien nur der breite Strich, nicht die Fläche zwischen den Knicken */
+polyline.plan-hit {
+  fill: none;
+}
+
+.plan-svg.editing .plan-hit {
+  cursor: move;
+}
+
+.plan-handle {
+  fill: var(--panel);
+  stroke: var(--accent);
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.plan-drawing {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
+.plan-rubber {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.plan-panel {
+  position: absolute;
+  z-index: 5;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plan-panel-controls .row-slider {
+  flex: 1;
+}
+
+.plan-panel select {
+  width: 100%;
+}
+
+.plan-side {
+  width: 220px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+}
+
+.plan-side-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: grab;
+}
+
+.plan-side-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.plan-help {
+  margin-top: 8px;
+}
+
+.plan-name-input {
+  position: absolute;
+  z-index: 6;
+  width: 200px;
+}
+
+.plan-menu {
+  position: absolute;
+  z-index: 5;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  /* feste Breite: RoomPlan hält das Menü anhand von MENU_W in der Bühne */
+  width: 210px;
+}
+
+.plan-menu button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-menu button:hover {
+  background: var(--panel-2);
+}
