@@ -426,4 +426,9 @@ export const EN: Record<string, string> = {
   'Link: {reason}': 'Link: {reason}',
   'Links von anderen Programmen erlauben': 'Allow links from other programs',
   'Für Stream Deck und Automationen, z. B. {example}. Anleitung im README.': 'For Stream Deck and automations, e.g. {example}. See the README.',
+  // Raumplan
+  '{name}, offline': '{name}, offline',
+  '{name}, verbindet': '{name}, connecting',
+  '{name}, aus': '{name}, off',
+  '{name}, an, {n} %': '{name}, on, {n} %',
 };

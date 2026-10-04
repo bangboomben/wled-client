@@ -147,6 +147,37 @@ export interface DeviceGroup {
   members: string[];
 }
 
+/** Punkt im Raumplan, in Rastereinheiten. */
+export type PlanPoint = [number, number];
+
+export interface PlanRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Raum im Raumplan: beschriftetes Rechteck, nur zur Orientierung. */
+export interface PlanRoom extends PlanRect {
+  id: string;
+  name: string;
+}
+
+/** Platz eines Geräts: Linie mit Knickpunkten (LED 1 am ersten Punkt, `reversed`: am letzten), Punkt oder Fläche. */
+export type PlanItem =
+  | { deviceId: string; shape: 'line'; points: PlanPoint[]; reversed: boolean }
+  | { deviceId: string; shape: 'point'; at: PlanPoint }
+  | { deviceId: string; shape: 'area'; rect: PlanRect };
+
+export type PlanShape = PlanItem['shape'];
+
+/** Inhalt von plan.json. */
+export interface RoomPlan {
+  version: 1;
+  rooms: PlanRoom[];
+  items: PlanItem[];
+}
+
 export type DeviceStatus = 'connecting' | 'online' | 'offline';
 
 export interface DeviceSnapshot {
