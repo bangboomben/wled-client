@@ -1,9 +1,11 @@
-// Prüft gespeicherte Geräte, Gruppen und Einstellungen (devices.json, groups.json, settings.json und
+// Prüft gespeicherte Geräte, Gruppen, Raumplan und Einstellungen (devices.json, groups.json, plan.json, settings.json und
 // Änderungen aus der Oberfläche). Ohne Electron, damit es sich ohne App testen lässt.
 
+import fs from 'node:fs';
 import { t } from '../shared/i18n';
 import { GROUP_NAME_MAX } from '../shared/groups';
-import type { AppSettings, DeviceConfig, DeviceGroup } from '../shared/types';
+import { AREA_MIN, PLAN_COORD_MAX, PLAN_POINTS_MAX, PLAN_ROOMS_MAX, ROOM_MIN, ROOM_NAME_MAX, emptyPlan, round1 } from '../shared/plan';
+import type { AppSettings, DeviceConfig, DeviceGroup, PlanItem, PlanPoint, PlanRect, PlanRoom, RoomPlan } from '../shared/types';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   closeToTray: true,
@@ -13,6 +15,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   language: 'system',
   autoUpdate: true,
   allowLinks: false,
+  planOpen: false,
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -39,7 +42,7 @@ export function cleanDevices(raw: unknown): DeviceConfig[] {
 export function cleanSettings(raw: unknown): Partial<AppSettings> {
   const out: Partial<AppSettings> = {};
   if (!isObj(raw)) return out;
-  for (const k of ['closeToTray', 'startWithWindows', 'liveView', 'autoUpdate', 'allowLinks', 'trayHintShown'] as const) {
+  for (const k of ['closeToTray', 'startWithWindows', 'liveView', 'autoUpdate', 'allowLinks', 'planOpen', 'trayHintShown'] as const) {
     const v = raw[k];
     if (typeof v === 'boolean') out[k] = v;
   }
@@ -91,4 +94,89 @@ export function checkGroup(
   const members = knownMembers(input.members, deviceIds);
   if (!members.length) return { ok: false, error: t('Bitte mindestens ein Gerät auswählen.') };
   return { ok: true, name, members };
+}
+
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const inRange = (v: number) => Math.abs(v) <= PLAN_COORD_MAX;
+
+function cleanPoint(raw: unknown): PlanPoint | null {
+  if (!Array.isArray(raw) || raw.length !== 2 || !finite(raw[0]) || !finite(raw[1])) return null;
+  const p: PlanPoint = [round1(raw[0]), round1(raw[1])];
+  return inRange(p[0]) && inRange(p[1]) ? p : null;
+}
+
+function cleanRect(raw: unknown, min: number): PlanRect | null {
+  if (!isObj(raw) || !finite(raw.x) || !finite(raw.y) || !finite(raw.w) || !finite(raw.h)) return null;
+  const r = { x: round1(raw.x), y: round1(raw.y), w: round1(raw.w), h: round1(raw.h) };
+  if (r.w < min || r.h < min) return null;
+  return [r.x, r.y, r.x + r.w, r.y + r.h].every(inRange) ? r : null;
+}
+
+function cleanItem(raw: unknown, known: ReadonlySet<string>): PlanItem | null {
+  if (!isObj(raw) || typeof raw.deviceId !== 'string' || !known.has(raw.deviceId)) return null;
+  const deviceId = raw.deviceId;
+  if (raw.shape === 'line') {
+    if (!Array.isArray(raw.points) || raw.points.length < 2 || raw.points.length > PLAN_POINTS_MAX) return null;
+    const points = raw.points.map(cleanPoint);
+    if (points.some((p) => !p)) return null;
+    return { deviceId, shape: 'line', points: points as PlanPoint[], reversed: raw.reversed === true };
+  }
+  if (raw.shape === 'point') {
+    const at = cleanPoint(raw.at);
+    return at ? { deviceId, shape: 'point', at } : null;
+  }
+  if (raw.shape === 'area') {
+    const rect = cleanRect(raw.rect, AREA_MIN);
+    return rect ? { deviceId, shape: 'area', rect } : null;
+  }
+  return null;
+}
+
+/**
+ * Raumplan aus plan.json oder der Oberfläche: Unbrauchbares fällt weg (Räume ohne Namen, zu klein oder außerhalb
+ * des Bereichs, unbekannte Geräte, kaputte Formen); je Raum-id und je Gerät gilt der erste Eintrag.
+ */
+export function cleanPlan(raw: unknown, deviceIds: readonly string[]): RoomPlan {
+  if (!isObj(raw) || raw.version !== 1) return emptyPlan();
+  const roomIds = new Set<string>();
+  const rooms: PlanRoom[] = [];
+  for (const r of Array.isArray(raw.rooms) ? raw.rooms : []) {
+    if (rooms.length >= PLAN_ROOMS_MAX) break;
+    if (!isObj(r) || typeof r.id !== 'string' || !r.id || r.id.length >= 100 || roomIds.has(r.id) || typeof r.name !== 'string') continue;
+    const name = r.name.trim().slice(0, ROOM_NAME_MAX).trim();
+    const rect = cleanRect(r, ROOM_MIN);
+    if (!name || !rect) continue;
+    roomIds.add(r.id);
+    rooms.push({ id: r.id, name, ...rect });
+  }
+  const known = new Set(deviceIds);
+  const placed = new Set<string>();
+  const items: PlanItem[] = [];
+  for (const it of Array.isArray(raw.items) ? raw.items : []) {
+    const item = cleanItem(it, known);
+    if (!item || placed.has(item.deviceId)) continue;
+    placed.add(item.deviceId);
+    items.push(item);
+  }
+  return { version: 1, rooms, items };
+}
+
+/** Liest plan.json. Fehlt sie → leerer Plan. Ist sie kein JSON → als plan.json.broken beiseitelegen, leerer Plan. */
+export function readPlanFile(file: string, deviceIds: readonly string[]): RoomPlan {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return emptyPlan();
+  }
+  try {
+    return cleanPlan(JSON.parse(text), deviceIds);
+  } catch {
+    try {
+      fs.renameSync(file, `${file}.broken`);
+    } catch {
+      // Bleibt liegen und wird beim nächsten Speichern ersetzt.
+    }
+    return emptyPlan();
+  }
 }

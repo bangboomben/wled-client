@@ -24,6 +24,7 @@ class AppStore {
     language: 'system',
     autoUpdate: true,
     allowLinks: false,
+    planOpen: false,
   };
   update: UpdateState = { status: 'unsupported', current: '' };
   scan: ScanProgress = { running: false, mode: 'discover', done: 0, total: 0, found: [] };

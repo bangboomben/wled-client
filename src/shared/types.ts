@@ -216,6 +216,8 @@ export interface AppSettings {
   selectedId?: string;
   /** Gewählte Gruppe; leer oder fehlend = ein Gerät ist gewählt (selectedId). */
   selectedGroupId?: string;
+  /** Raumplan ist gewählt (statt Gerät oder Gruppe). */
+  planOpen: boolean;
   trayHintShown?: boolean;
 }
 
