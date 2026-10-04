@@ -2300,6 +2300,8 @@ rect.plan-area {
 
 .plan-item.offline .plan-track {
   stroke-width: 2;
+  /* Runde Enden füllten bei 2 px Strichstärke die Lücken der Striche fast zu */
+  stroke-linecap: butt;
 }
 
 .plan-item.selected .plan-track,
@@ -2311,7 +2313,8 @@ rect.plan-area {
   stroke: var(--accent);
 }
 
-.plan-item:focus-visible {
+/* Kein UA-Rahmen um die ganze Gruppe (auch nicht nach einem Mausklick); Tastaturfokus zeigt der Akzentstrich oben */
+.plan-item:focus {
   outline: none;
 }
 

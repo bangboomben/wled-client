@@ -23,6 +23,8 @@ const PORTS = { desk: 18281, bedroom: 18282, extra: 18283 };
 const MDNS_PORT = 18353;
 // Eigene Mock-Geräte für die Raumplan-Schritte: Streifen, Bulb (1 LED), Matrix 16×8
 const PLAN_PORTS = { desk: 18291, bulb: 18292, matrix: 18293 };
+// Port, auf dem nichts lauscht: ein Gerät dort bleibt offline
+const GONE_PORT = 18294;
 const mock = spawn(
   process.execPath,
   [
@@ -39,11 +41,14 @@ const mock = spawn(
   ],
   { stdio: ['ignore', 'pipe', 'inherit'] },
 );
+// Mock-Geräte der Raumplan-Schritte; startPlanMock() setzt ihn früh, damit auch der Watchdog ihn beenden kann
+let planMock;
 // Kein Schritt darf den Lauf unbegrenzt aufhalten (etwa ein Fenster, das sich nicht schließen lässt).
 const WATCHDOG_MS = 8 * 60_000;
 const watchdog = setTimeout(() => {
   console.log(`\nAbbruch: Test läuft länger als ${WATCHDOG_MS / 60_000} min`);
   mock.kill();
+  planMock?.kill();
   process.exit(2);
 }, WATCHDOG_MS);
 
@@ -158,7 +163,7 @@ async function closeApp(electronApp, label) {
 /** Löscht ein Testverzeichnis; Windows gibt Dateien eines eben beendeten Prozesses erst verzögert frei. */
 const removeDir = (dir) => rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 
-/** Startet die Mock-Geräte für den Raumplan in einem eigenen Prozess (ohne mDNS). */
+/** Startet die Mock-Geräte für den Raumplan in einem eigenen Prozess (ohne mDNS) als `planMock`. Scheitert schnell, wenn er endet (z. B. Port belegt). */
 async function startPlanMock() {
   const proc = spawn(
     process.execPath,
@@ -171,21 +176,24 @@ async function startPlanMock() {
     ],
     { stdio: ['ignore', 'pipe', 'inherit'] },
   );
-  await new Promise((resolve) => proc.stdout.on('data', (d) => d.toString().includes(String(PLAN_PORTS.matrix)) && resolve()));
-  return proc;
+  planMock = proc;
+  await new Promise((resolve, reject) => {
+    proc.once('exit', (code) => reject(new Error(`Raumplan-Mock endete vor dem Start (Code ${code}) – Ports ${PLAN_PORTS.desk}–${PLAN_PORTS.matrix} belegt?`)));
+    proc.stdout.on('data', (d) => d.toString().includes(String(PLAN_PORTS.matrix)) && resolve());
+  });
 }
 
-/** Profil für die Raumplan-Schritte: drei Plan-Geräte, Live an, optional ein Plan. */
-function planProfile(plan) {
+/** Profil für die Raumplan-Schritte: Plan-Geräte (Standard: drei), Live an, optional ein Plan. */
+function planProfile(
+  plan,
+  devices = [
+    { id: 'dev-desk', host: `127.0.0.1:${PLAN_PORTS.desk}` },
+    { id: 'dev-bulb', host: `127.0.0.1:${PLAN_PORTS.bulb}` },
+    { id: 'dev-matrix', host: `127.0.0.1:${PLAN_PORTS.matrix}` },
+  ],
+) {
   const dir = mkdtempSync(path.join(tmpdir(), 'wled-client-plan-'));
-  writeFileSync(
-    path.join(dir, 'devices.json'),
-    JSON.stringify([
-      { id: 'dev-desk', host: `127.0.0.1:${PLAN_PORTS.desk}` },
-      { id: 'dev-bulb', host: `127.0.0.1:${PLAN_PORTS.bulb}` },
-      { id: 'dev-matrix', host: `127.0.0.1:${PLAN_PORTS.matrix}` },
-    ]),
-  );
+  writeFileSync(path.join(dir, 'devices.json'), JSON.stringify(devices));
   writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'de', planOpen: true }));
   if (plan) writeFileSync(path.join(dir, 'plan.json'), JSON.stringify(plan));
   return dir;
@@ -197,16 +205,26 @@ async function mainWindow(electronApp) {
   return electronApp.windows().find((w) => w.url().includes('index.html'));
 }
 
-/** Farbe der LED-Ebene an einem Punkt der Bühne (CSS-Pixel relativ zur Bühne): [r, g, b]. */
-const ledPixel = (w, x, y) =>
-  w.evaluate(
-    ([px, py]) => {
-      const c = document.querySelector('.plan-leds');
-      const k = c.width / c.clientWidth;
-      return [...c.getContext('2d').getImageData(Math.round(px * k), Math.round(py * k), 1, 1).data.slice(0, 3)];
-    },
-    [x, y],
-  );
+/**
+ * Farben der LED-Ebene an Punkten der Bühne (CSS-Pixel relativ zur Bühne): je Punkt der hellste Wert aus 3×3 Pixeln
+ * als [r, g, b] — bei gebrochenem Anzeigemaßstab trifft ein einzelnes Pixel sonst leicht die Lücke. Alle Punkte aus
+ * demselben Bild der Ebene. Nicht bemalt (offline, außerhalb): [0, 0, 0].
+ */
+const ledPixels = (w, points) =>
+  w.evaluate((pts) => {
+    const c = document.querySelector('.plan-leds');
+    const ctx = c.getContext('2d');
+    const k = c.width / c.clientWidth;
+    return pts.map(([px, py]) => {
+      const data = ctx.getImageData(Math.round(px * k) - 1, Math.round(py * k) - 1, 3, 3).data;
+      let best = [0, 0, 0];
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] + data[i + 1] + data[i + 2] > best[0] + best[1] + best[2]) best = [data[i], data[i + 1], data[i + 2]];
+      }
+      return best;
+    });
+  }, points);
+const ledPixel = async (w, x, y) => (await ledPixels(w, [[x, y]]))[0];
 const expect = (cond, msg) => {
   if (!cond) throw new Error(msg);
 };
@@ -976,7 +994,13 @@ await step('Kaltstart per Link: App startet unsichtbar und führt den Link aus',
     removeDir(fresh);
   }
 });
-const planMock = await startPlanMock();
+try {
+  await startPlanMock();
+} catch (err) {
+  console.log(`\nAbbruch: ${err.message}`);
+  mock.kill();
+  process.exit(2);
+}
 const PLAN_SHOWN = {
   version: 1,
   rooms: [{ id: 'r1', name: 'Büro', x: 0, y: 0, w: 22, h: 12 }],
@@ -990,7 +1014,8 @@ const PLAN_SHOWN = {
 await step('Raumplan: Anzeige, Live-Farben, Bedienfeld, Wechsel und Neustart', async () => {
   const dir = planProfile(PLAN_SHOWN);
   await api(PLAN_PORTS.desk, '/json/state', { on: true, bri: 255, seg: [{ id: 0, fx: 9 }] });
-  await api(PLAN_PORTS.matrix, '/json/state', { on: true, bri: 255 });
+  // Matrix mit laufendem Effekt: Der Mock malt zeilenweise einen Regenbogen, oben und unten sehen also verschieden aus
+  await api(PLAN_PORTS.matrix, '/json/state', { on: true, bri: 255, seg: [{ id: 0, fx: 9 }] });
   await api(PLAN_PORTS.bulb, '/json/state', { on: false });
   let pa = await launch(dir);
   try {
@@ -1015,8 +1040,19 @@ await step('Raumplan: Anzeige, Live-Farben, Bedienfeld, Wechsel und Neustart', a
       first ??= p.join();
       return p.join() !== first;
     }, 'Live-Farben am Desk ändern sich', 10000);
-    const [mx, my] = await anchor('dev-matrix');
-    await waitFor(async () => (await ledPixel(w, mx, my)).reduce((a, b) => a + b, 0) > 60, 'Matrix leuchtet live', 10000);
+    // Matrix: Das Pixelraster ist wirklich gezeichnet, wenn eine Zelle der obersten und eine der untersten Zeile hell
+    // sind und sich unterscheiden (eine einfarbige Fläche aus den Segmentfarben täte das nicht)
+    const cell = await w
+      .locator('.plan-item[data-device="dev-matrix"] .plan-hit')
+      .evaluate((e) => ({ x: Number(e.getAttribute('x')), y: Number(e.getAttribute('y')), w: Number(e.getAttribute('width')), h: Number(e.getAttribute('height')) }));
+    // Mitte der vierten Zelle (von 16 Spalten) in Zeile 1 und Zeile 8 (von 8)
+    const topCell = [cell.x + (cell.w * 3.5) / 16, cell.y + cell.h / 16];
+    const bottomCell = [cell.x + (cell.w * 3.5) / 16, cell.y + cell.h - cell.h / 16];
+    const bright = (p) => p[0] + p[1] + p[2] > 60;
+    await waitFor(async () => {
+      const [a, b] = await ledPixels(w, [topCell, bottomCell]);
+      return bright(a) && bright(b) && Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) > 60;
+    }, 'Matrix zeigt das Pixelraster (oben und unten helle, verschiedene Farben)', 10000);
     // Bedienfeld am Bulb: einschalten und Effekt setzen
     await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
     await w.waitForSelector('.plan-panel:has-text("Mock Bulb")');
@@ -1028,19 +1064,45 @@ await step('Raumplan: Anzeige, Live-Farben, Bedienfeld, Wechsel und Neustart', a
     await waitFor(async () => (await state(PLAN_PORTS.bulb)).seg[0].fx === eff.indexOf('Rainbow'), 'Bulb-Effekt Rainbow');
     await w.keyboard.press('Escape');
     await w.waitForSelector('.plan-panel', { state: 'detached' });
-    // Tastatur: Fokus auf den Desk, Enter öffnet sein Bedienfeld
+    // Tastatur: Fokus auf den Desk, Enter öffnet sein Bedienfeld und setzt den Fokus auf den Schalter darin;
+    // Esc schließt und bringt den Fokus zurück auf den Desk
+    const focused = () => w.evaluate(() => ({ role: document.activeElement?.getAttribute('role'), inPanel: !!document.activeElement?.closest('.plan-panel'), device: document.activeElement?.getAttribute('data-device') }));
     await w.focus('.plan-item[data-device="dev-desk"]');
     await w.keyboard.press('Enter');
     await w.waitForSelector('.plan-panel:has-text("Mock Desk")');
+    await waitFor(async () => {
+      const f = await focused();
+      return f.inPanel && f.role === 'switch';
+    }, 'Fokus auf dem Schalter im Bedienfeld');
     await w.keyboard.press('Escape');
-    // Strg+1 verlässt den Plan, der Eintrag in der Seitenleiste führt zurück
+    await w.waitForSelector('.plan-panel', { state: 'detached' });
+    await waitFor(async () => (await focused()).device === 'dev-desk', 'Fokus zurück auf dem Desk');
+    // Leertaste öffnet wie Enter und schaltet den Schalter nicht gleich mit (der Bulb bleibt an)
+    await w.focus('.plan-item[data-device="dev-bulb"]');
+    await w.keyboard.press('Space');
+    await w.waitForSelector('.plan-panel:has-text("Mock Bulb")');
+    await waitFor(async () => (await focused()).inPanel, 'Fokus im Bedienfeld nach Leertaste');
+    await w.waitForTimeout(400);
+    expect((await state(PLAN_PORTS.bulb)).on, 'Leertaste hat den Schalter mitbetätigt');
+    await w.keyboard.press('Escape');
+    await w.waitForSelector('.plan-panel', { state: 'detached' });
+    // Strg+1 verlässt den Plan; die Wahl wird nach 400 ms gespeichert
     await w.keyboard.press('Control+1');
     await w.waitForSelector('.plan-view', { state: 'detached' });
     await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    await w.waitForTimeout(800);
+    expect(await closeApp(pa, 'Raumplan verlassen'), 'App reagiert nicht auf Beenden');
+    // Neustart: Das Profil beginnt mit planOpen: true — jetzt zeigt die App die Geräteansicht, also wurde das Verlassen gespeichert
+    pa = await launch(dir);
+    w = await mainWindow(pa);
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk', null, { timeout: 15000 });
+    await w.waitForTimeout(500); // ein spät geladener Zustand dürfte den Plan nicht doch noch öffnen
+    expect((await w.locator('.plan-view').count()) === 0, 'Raumplan nach dem Verlassen wieder offen');
+    // Der Eintrag in der Seitenleiste führt zurück; auch das wird gespeichert
     await w.click('.plan-row');
     await w.waitForSelector('.plan-view');
-    await w.waitForTimeout(800); // Wahl wird nach 400 ms gespeichert
-    expect(await closeApp(pa, 'Raumplan'), 'App reagiert nicht auf Beenden');
+    await w.waitForTimeout(800);
+    expect(await closeApp(pa, 'Raumplan Seitenleiste'), 'App reagiert nicht auf Beenden');
     // Neustart: Raumplan wieder gewählt, Plan unverändert
     pa = await launch(dir);
     w = await mainWindow(pa);
@@ -1049,6 +1111,50 @@ await step('Raumplan: Anzeige, Live-Farben, Bedienfeld, Wechsel und Neustart', a
     expect(await closeApp(pa, 'Raumplan Neustart'), 'App reagiert nicht auf Beenden');
   } finally {
     await closeApp(pa, 'Raumplan');
+    removeDir(dir);
+  }
+});
+
+await step('Raumplan: Offline-Gerät hat gestrichelte Kontur und „offline“, aber keine Farben', async () => {
+  // Hinter dem Gerät lauscht nichts, es bleibt offline; der Bulb daneben leuchtet als Gegenprobe
+  const dir = planProfile(
+    {
+      version: 1,
+      rooms: [{ id: 'r1', name: 'Büro', x: 0, y: 0, w: 22, h: 12 }],
+      items: [
+        { deviceId: 'dev-gone', shape: 'line', points: [[2, 2], [14, 2]], reversed: false },
+        { deviceId: 'dev-bulb', shape: 'point', at: [6, 9] },
+      ],
+    },
+    [
+      { id: 'dev-gone', host: `127.0.0.1:${GONE_PORT}`, alias: 'Mock Gone' },
+      { id: 'dev-bulb', host: `127.0.0.1:${PLAN_PORTS.bulb}` },
+    ],
+  );
+  await api(PLAN_PORTS.bulb, '/json/state', { on: true, bri: 255, seg: [{ id: 0, fx: 9 }] });
+  const pa = await launch(dir);
+  try {
+    const w = await mainWindow(pa);
+    await w.waitForSelector('.plan-view', { timeout: 15000 });
+    const label = (id) => w.locator(`.plan-item[data-device="${id}"] .plan-label`).textContent();
+    await waitFor(async () => (await label('dev-gone')) === 'Mock Gone (offline)', 'Name mit „(offline)“ am Offline-Gerät', 15000);
+    expect((await label('dev-bulb')) === 'Mock Bulb', 'Online-Gerät trägt „(offline)“');
+    const dash = await w.locator('.plan-item[data-device="dev-gone"] .plan-track').evaluate((e) => getComputedStyle(e).strokeDasharray);
+    expect(dash !== 'none', 'Kontur des Offline-Geräts nicht gestrichelt');
+    const at = async (id) => {
+      const el = w.locator(`.plan-item[data-device="${id}"]`);
+      return [Number(await el.getAttribute('data-x')), Number(await el.getAttribute('data-y'))];
+    };
+    const [gx, gy] = await at('dev-gone');
+    const [bx, by] = await at('dev-bulb');
+    await waitFor(async () => (await ledPixel(w, bx, by)).reduce((a, b) => a + b, 0) > 60, 'Bulb leuchtet live', 10000);
+    await w.waitForTimeout(300);
+    // „Aus“ malt dunkelgrau; offline bleibt die Ebene unbemalt
+    const p = await ledPixel(w, gx, gy);
+    expect(p.join() === '0,0,0', `Offline-Gerät ist bemalt: ${p}`);
+    expect(await closeApp(pa, 'Raumplan offline'), 'App reagiert nicht auf Beenden');
+  } finally {
+    await closeApp(pa, 'Raumplan offline');
     removeDir(dir);
   }
 });

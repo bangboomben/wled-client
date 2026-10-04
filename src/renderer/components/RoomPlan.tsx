@@ -39,7 +39,7 @@ export function RoomPlan({
   const plan = usePlan();
   const settings = useSettings();
   const [stageRef, size] = useSize();
-  const [panel, setPanel] = useState<{ deviceId: string; at: PlanPoint } | null>(null);
+  const [panel, setPanel] = useState<{ deviceId: string; at: PlanPoint; keyboard: boolean } | null>(null);
   const view = fitView(planBounds(plan), size.w, size.h, 1);
   const empty = !plan.rooms.length && !plan.items.length;
   const panelDevice = panel ? devices.find((d) => d.id === panel.deviceId) : undefined;
@@ -94,7 +94,7 @@ export function RoomPlan({
                   placing={null}
                   onSelect={() => {}}
                   onEdit={() => {}}
-                  onOpenPanel={(deviceId, at) => setPanel({ deviceId, at })}
+                  onOpenPanel={(deviceId, at, viaKeyboard) => setPanel({ deviceId, at, keyboard: !!viaKeyboard })}
                   onRoomDrawn={() => {}}
                   onPlace={() => {}}
                   onDrawPoint={() => {}}
@@ -104,7 +104,16 @@ export function RoomPlan({
                 />
               )}
               {panel && panelDevice && (
-                <PlanPanel device={panelDevice} at={panel.at} width={size.w} height={size.h} onOpen={onOpen} onClose={closePanel} />
+                <PlanPanel
+                  key={panel.deviceId}
+                  device={panelDevice}
+                  at={panel.at}
+                  width={size.w}
+                  height={size.h}
+                  focusFirst={panel.keyboard}
+                  onOpen={onOpen}
+                  onClose={closePanel}
+                />
               )}
             </div>
           </div>

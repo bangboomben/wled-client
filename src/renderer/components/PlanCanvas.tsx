@@ -6,6 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { t } from '../../shared/i18n';
 import {
   corners,
   directionAt,
@@ -25,7 +26,7 @@ import {
   type PlanView,
 } from '../../shared/plan';
 import type { DeviceSnapshot, PlanItem, PlanPoint, PlanRect, RoomPlan } from '../../shared/types';
-import { parseFrame, rgbCss, staticColors, type LiveFrame } from '../lib/plan-colors';
+import { parseFrame, rgbCss, staticColors, type LiveFrame, type Rgb } from '../lib/plan-colors';
 import type { PlanEdit } from '../lib/plan-edit';
 import { wled } from '../lib/store';
 
@@ -45,6 +46,10 @@ type Gesture =
   | { kind: 'area-resize'; id: string; corner: number; origin: PlanRect; moved: boolean };
 
 const pointRadius = (v: PlanView) => Math.min(14, Math.max(6, v.scale * 0.6));
+
+/** Live-Werte unter dieser Helligkeit (r+g+b) malt der Plan wie „aus“ — reines Schwarz verschwindet auf dunklem Grund. */
+const LIVE_DARK = 24;
+const liveCss = (c: Rgb, dark: string) => (c[0] + c[1] + c[2] < LIVE_DARK ? dark : rgbCss(c));
 
 /** Raster im Bearbeitungsmodus: jede Einheit, bei kleinem Maßstab jede fünfte. */
 function Grid({ view, width, height }: { view: PlanView; width: number; height: number }) {
@@ -101,7 +106,8 @@ function ItemShape({
   onKeyOpen: (deviceId: string, at: PlanPoint) => void;
 }) {
   const off = device?.status !== 'online';
-  const name = device?.name ?? '';
+  // Offline steht sichtbar am Namen; beim Verbinden bleibt es beim Namen (nur die gestrichelte Kontur)
+  const name = device?.status === 'offline' ? t('{name} (offline)', { name: device.name }) : (device?.name ?? '');
   const anchor = anchorOf(item, view);
   const px = (p: PlanPoint) => toScreen(view, p);
   const common = {
@@ -113,7 +119,11 @@ function ItemShape({
     role: 'button',
     'aria-label': device ? planLabel(device) : name,
     onKeyDown: (e: ReactKeyboardEvent) => {
-      if (e.key === 'Enter' && !editing) onKeyOpen(item.deviceId, anchor);
+      if ((e.key === 'Enter' || e.key === ' ') && !editing) {
+        // Leertaste sonst: Seite scrollt
+        e.preventDefault();
+        onKeyOpen(item.deviceId, anchor);
+      }
     },
   };
 
@@ -186,7 +196,7 @@ function paintItem(ctx: CanvasRenderingContext2D, item: PlanItem, d: DeviceSnaps
   const css = (c: string | null | undefined) => c ?? dark;
   if (item.shape === 'line') {
     const n = frame ? frame.colors.length : Math.min(Math.max(1, d.info?.leds.count ?? 30), 256);
-    const colors = frame ? frame.colors.map(rgbCss) : staticColors(d, n);
+    const colors = frame ? frame.colors.map((c) => liveCss(c, dark)) : staticColors(d, n);
     const pts = ledPositions(item.points, n, item.reversed).map((p) => toScreen(view, p));
     const spacing = n > 1 ? (lineLength(item.points) * view.scale) / (n - 1) : 8;
     if (spacing < 2) {
@@ -213,7 +223,7 @@ function paintItem(ctx: CanvasRenderingContext2D, item: PlanItem, d: DeviceSnaps
   }
   if (item.shape === 'point') {
     const [x, y] = toScreen(view, item.at);
-    ctx.fillStyle = css(frame ? rgbCss(frame.colors[0]) : staticColors(d, 1)[0]);
+    ctx.fillStyle = css(frame ? liveCss(frame.colors[0], dark) : staticColors(d, 1)[0]);
     ctx.beginPath();
     ctx.arc(x, y, pointRadius(view), 0, Math.PI * 2);
     ctx.fill();
@@ -230,7 +240,7 @@ function paintItem(ctx: CanvasRenderingContext2D, item: PlanItem, d: DeviceSnaps
       for (let col = 0; col < frame.w; col++) {
         const c = frame.colors[row * frame.w + col];
         if (!c) continue;
-        ctx.fillStyle = rgbCss(c);
+        ctx.fillStyle = liveCss(c, dark);
         ctx.fillRect(x + col * cw, y + row * ch, Math.ceil(cw), Math.ceil(ch));
       }
     }
@@ -277,8 +287,8 @@ export function PlanCanvas({
   placing: string | null;
   onSelect: (sel: PlanSelection) => void;
   onEdit: (edit: PlanEdit) => void;
-  /** Bedienfeld öffnen; `at` in Pixeln relativ zur Bühne. */
-  onOpenPanel: (deviceId: string, at: PlanPoint) => void;
+  /** Bedienfeld öffnen; `at` in Pixeln relativ zur Bühne, `viaKeyboard`: per Enter oder Leertaste geöffnet. */
+  onOpenPanel: (deviceId: string, at: PlanPoint, viaKeyboard?: boolean) => void;
   onRoomDrawn: (rect: PlanRect) => void;
   onPlace: (deviceId: string, at: PlanPoint) => void;
   onDrawPoint: (at: PlanPoint) => void;
@@ -314,9 +324,10 @@ export function PlanCanvas({
     const dark = getComputedStyle(canvas).getPropertyValue('--panel-3').trim() || '#2a2f3a';
     for (const item of s.plan.items) {
       const d = s.devices.find((x) => x.id === item.deviceId);
-      // Gerät gelöscht, Plan noch nicht nachgezogen: überspringen
-      if (!d) continue;
-      paintItem(ctx, item, d, s.live && d.status === 'online' ? frames.current.get(d.id) : undefined, s.view, dark);
+      // Gerät gelöscht, Plan noch nicht nachgezogen: überspringen. Offline (oder beim Verbinden): keine Farben,
+      // nur die gestrichelte Kontur der SVG-Ebene — „aus“ sieht anders aus (dunkelgrau).
+      if (!d || d.status !== 'online') continue;
+      paintItem(ctx, item, d, s.live ? frames.current.get(d.id) : undefined, s.view, dark);
     }
   };
   const schedule = () => {
@@ -324,7 +335,14 @@ export function PlanCanvas({
   };
   // Nach jedem Rendern (Plan, Geräte, Ausschnitt) neu malen — höchstens einmal pro Bild.
   useEffect(schedule);
-  useEffect(() => () => cancelAnimationFrame(raf.current), []);
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(raf.current);
+      // Sonst hielte ein erneut eingehängter Effekt (Strict Mode) das abgebrochene Bild für geplant
+      raf.current = 0;
+    },
+    [],
+  );
   useEffect(() => {
     if (!live) {
       frames.current.clear();
@@ -516,7 +534,7 @@ export function PlanCanvas({
             view={view}
             editing={editing}
             selected={selection?.kind === 'item' && selection.deviceId === item.deviceId}
-            onKeyOpen={onOpenPanel}
+            onKeyOpen={(deviceId, at) => onOpenPanel(deviceId, at, true)}
           />
         ))}
         {drawn.length > 0 && <polyline className="plan-drawing" points={drawn.map((p) => p.join(',')).join(' ')} />}

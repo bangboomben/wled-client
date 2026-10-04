@@ -16,6 +16,7 @@ export function PlanPanel({
   at,
   width,
   height,
+  focusFirst,
   onOpen,
   onClose,
 }: {
@@ -24,6 +25,8 @@ export function PlanPanel({
   at: PlanPoint;
   width: number;
   height: number;
+  /** Per Tastatur geöffnet: Fokus gleich auf das erste bedienbare Element. */
+  focusFirst: boolean;
   onOpen: (id: string) => void;
   onClose: () => void;
 }) {
@@ -33,6 +36,12 @@ export function PlanPanel({
   const online = device.status === 'online';
   const effects = st ? commonNames([st.effects]) : [];
 
+  // `at` ändert sich bei jedem erneuten Öffnen; so greift der Fokus auch dann, wenn das Feld schon offen war
+  useEffect(() => {
+    if (!focusFirst) return;
+    ref.current?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled)')?.focus();
+  }, [focusFirst, at]);
+
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const el = e.target as Element;
@@ -41,7 +50,12 @@ export function PlanPanel({
       onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      // Lag der Fokus im Feld, geht er zurück auf das Gerät — sonst fiele er mit dem Feld auf die Seite.
+      const inside = !!ref.current?.contains(document.activeElement);
+      const item = ref.current?.parentElement?.querySelector<SVGElement>(`.plan-item[data-device="${CSS.escape(device.id)}"]`);
+      onClose();
+      if (inside) item?.focus();
     };
     document.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
@@ -49,7 +63,7 @@ export function PlanPanel({
       document.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
     };
-  }, [onClose]);
+  }, [onClose, device.id]);
 
   const apply = async (name: string) => {
     if (busy) return;

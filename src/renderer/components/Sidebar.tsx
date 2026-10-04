@@ -203,7 +203,11 @@ export function Sidebar({
             aria-current={planOpen || undefined}
             onClick={onOpenPlan}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') onOpenPlan();
+              if (e.key === 'Enter' || e.key === ' ') {
+                // Leertaste sonst: Liste scrollt
+                e.preventDefault();
+                onOpenPlan();
+              }
             }}
           >
             <Icon name="map" size={16} className="group-icon" />
