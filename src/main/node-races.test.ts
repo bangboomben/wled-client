@@ -19,6 +19,17 @@ const READ_STACK = `RangeError [ERR_OUT_OF_RANGE]: The value of "err" is out of 
     at new ErrnoException (node:internal/errors:770:20)
     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)`;
 
+/** Ein echter Lesefehler im 'data'-Handler: stream.push feuert 'data' synchron, also steht onStreamRead mit im Stapel. */
+const HANDLER_STACK = `RangeError [ERR_OUT_OF_RANGE]: The value of "offset" is out of range. It must be >= 0 and <= 0. Received 1
+    at boundsError (node:internal/buffer:92:9)
+    at readUInt16BE (node:internal/buffer:338:5)
+    at Socket.<anonymous> (main.cjs:1:1)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at TCP.onStreamRead (node:internal/stream_base_commons:189:23)`;
+
 describe('isSocketTeardownRace', () => {
   it('erkennt den RangeError aus onStreamRead', () => {
     const err = rangeError(READ_STACK);
@@ -32,6 +43,17 @@ describe('isSocketTeardownRace', () => {
     const err = new Error('boom') as NodeJS.ErrnoException;
     err.code = 'ECONNRESET';
     err.stack = READ_STACK;
+    expect(isSocketTeardownRace(err)).toBe(false);
+  });
+  it('ERR_OUT_OF_RANGE aus einem Daten-Handler unter onStreamRead ist ein echter Fehler', () => {
+    let err: Error | undefined;
+    try {
+      Buffer.alloc(2).readUInt16BE(1);
+    } catch (e) {
+      err = e as Error;
+    }
+    expect((err as NodeJS.ErrnoException).code).toBe('ERR_OUT_OF_RANGE');
+    err!.stack = HANDLER_STACK;
     expect(isSocketTeardownRace(err)).toBe(false);
   });
   it('Fehler ohne Code, Nicht-Fehler und fehlender Stapel', () => {
