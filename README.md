@@ -39,7 +39,7 @@ automations.**
 |:---:|:---:|
 | ![Effects with palette previews](docs/screenshots/effects.png) | ![Colors](docs/screenshots/colors.png) |
 | ![Presets and playlists](docs/screenshots/presets.png) | ![Segments](docs/screenshots/segments.png) |
-| ![Light theme](docs/screenshots/light.png) | <img src="docs/screenshots/tray.png" width="260" alt="Tray quick-access" /> |
+| ![Light theme](docs/screenshots/light.png) | <img src="docs/screenshots/tray.png" width="178" alt="Tray quick-access" /> |
 
 ## Install
 
