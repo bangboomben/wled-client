@@ -1,6 +1,7 @@
 // Erzeugt die Screenshots für die README aus simulierten Geräten (keine echten Daten).
 //   npm run build && node scripts/screenshots.mjs           → docs/screenshots/*.png
 //   npm run build && node scripts/screenshots.mjs --demo    → docs/demo.gif + docs/demo.mp4 (braucht ffmpeg)
+//   npm run build && node scripts/screenshots.mjs --groups  → docs/groups.gif (Gruppen und Look übertragen)
 
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -10,8 +11,11 @@ import { _electron as electron } from 'playwright-core';
 
 const OUT = 'docs/screenshots';
 const DEMO = process.argv.includes('--demo');
+const GROUPS = process.argv.includes('--groups');
+const RECORD = DEMO || GROUPS;
+const CLIP = GROUPS ? 'groups' : 'demo';
 mkdirSync(OUT, { recursive: true });
-const videoDir = DEMO ? mkdtempSync(path.join(tmpdir(), 'wled-client-video-')) : null;
+const videoDir = RECORD ? mkdtempSync(path.join(tmpdir(), 'wled-client-video-')) : null;
 
 const DEVICES = [
   { port: 19181, fixture: 'desk', name: 'Desk' },
@@ -73,7 +77,7 @@ const app = await electron.launch({
   // Gerätesuche nie ins echte Netz: mDNS an einen Port, auf dem niemand antwortet
   env: { ...process.env, WLED_CLIENT_USER_DATA: userData, WLED_CLIENT_KEEP_FLYOUT: '1', WLED_CLIENT_MDNS_TARGET: '127.0.0.1:9' },
   colorScheme: 'dark',
-  ...(DEMO ? { recordVideo: { dir: videoDir, size: { width: 1220, height: 820 } } } : {}),
+  ...(RECORD ? { recordVideo: { dir: videoDir, size: { width: 1220, height: 820 } } } : {}),
 });
 let demoStart = 0;
 let video = null;
@@ -93,9 +97,9 @@ try {
     await win.waitForTimeout(1500);
   };
 
-  if (DEMO) {
+  if (RECORD) {
     video = win.video();
-    demoStart = await recordDemo(win, select);
+    demoStart = await (GROUPS ? recordGroups : recordDemo)(win, select);
   } else {
     await shoot(win, fly, select);
   }
@@ -136,26 +140,24 @@ async function shoot(win, fly, select) {
   console.log(`Screenshots in ${OUT}/`);
 }
 
-if (DEMO && video) {
+if (RECORD && video) {
   const src = await video.path();
   const trim = Math.max(0, (demoStart - launchedAt) / 1000 - 0.2).toFixed(2);
   const ff = (args) => execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...args], { stdio: 'inherit' });
-  ff(['-ss', trim, '-i', src, '-vf', 'fps=30,scale=1220:-2:flags=lanczos', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-movflags', '+faststart', 'docs/demo.mp4']);
+  if (DEMO) ff(['-ss', trim, '-i', src, '-vf', 'fps=30,scale=1220:-2:flags=lanczos', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-movflags', '+faststart', 'docs/demo.mp4']);
   ff([
     '-ss', trim, '-i', src,
     '-vf', 'fps=12,scale=860:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle',
-    'docs/demo.gif',
+    `docs/${CLIP}.gif`,
   ]);
   rmSync(videoDir, { recursive: true, force: true });
   const mb = (f) => (statSync(f).size / 1048576).toFixed(1);
-  console.log(`Demo: docs/demo.gif (${mb('docs/demo.gif')} MB), docs/demo.mp4 (${mb('docs/demo.mp4')} MB)`);
+  console.log(`Clip: docs/${CLIP}.gif (${mb(`docs/${CLIP}.gif`)} MB)${DEMO ? `, docs/demo.mp4 (${mb('docs/demo.mp4')} MB)` : ''}`);
 }
 
-/** Kurzer Rundgang mit sichtbarem Mauszeiger. Gibt den Startzeitpunkt zurück (zum Zuschneiden). */
-async function recordDemo(win, select) {
+/** Sichtbarer Mauszeiger und Gesten für die Aufnahmen. */
+async function pointer(win) {
   const pause = (ms) => win.waitForTimeout(ms);
-  await select('Desk', 'effects');
-  await win.waitForFunction(() => document.querySelectorAll('.pal-bar').length > 20);
   // Die Videoaufnahme zeigt keinen Mauszeiger — ein eigener Punkt folgt der Maus.
   await win.evaluate(() => {
     const c = document.createElement('div');
@@ -192,6 +194,14 @@ async function recordDemo(win, select) {
     await win.mouse.up();
   };
 
+  return { pause, center, glide, tap, drag };
+}
+
+/** Kurzer Rundgang mit sichtbarem Mauszeiger. Gibt den Startzeitpunkt zurück (zum Zuschneiden). */
+async function recordDemo(win, select) {
+  await select('Desk', 'effects');
+  await win.waitForFunction(() => document.querySelectorAll('.pal-bar').length > 20);
+  const { pause, center, tap, drag } = await pointer(win);
   await win.mouse.move(760, 520);
   const start = Date.now();
   await pause(1300);
@@ -240,5 +250,45 @@ async function recordDemo(win, select) {
   await pause(600);
   await tap('.preset-card:has-text("Party") .preset-main');
   await pause(1800);
+  return start;
+}
+
+/** Gruppen: Look übertragen, Gruppenansicht, „Für alle“ und Gruppenregler. Gibt den Startzeitpunkt zurück. */
+async function recordGroups(win, select) {
+  await select('Desk', 'effects');
+  await win.waitForFunction(() => document.querySelectorAll('.pal-bar').length > 20);
+  const { pause, glide, tap, drag } = await pointer(win);
+
+  await win.mouse.move(760, 520);
+  const start = Date.now();
+  await pause(1000);
+
+  // Look vom Desk auf die Gruppe übertragen
+  await tap('.chip-btn:has-text("Copy look")');
+  await pause(700);
+  await tap('.popover .copy-groups .check:has-text("Ambient")');
+  await pause(500);
+  await tap('.popover .btn.primary');
+  await pause(1400);
+
+  // Gruppe öffnen: Mitglieder zeigen jetzt den Look vom Desk
+  await tap('.group-row:has-text("Ambient") .device-name');
+  await win.waitForSelector('.group-view .for-all');
+  await pause(1300);
+
+  // Für alle: Schnellfarbe, dann ein Effekt
+  await tap('.for-all .quick-btn[title="Blue"]');
+  await pause(1300);
+  await win.waitForFunction(() => !document.querySelector('.for-all select')?.disabled);
+  await glide('.for-all select[aria-label="Effect for all …"]');
+  await pause(300);
+  await win.selectOption('.for-all select[aria-label="Effect for all …"]', 'Rainbow');
+  await pause(1400);
+
+  // Gruppe in der Seitenleiste dimmen und wieder hochziehen
+  await drag('.group-row:has-text("Ambient") .slider', 0.8, 0.3);
+  await pause(400);
+  await drag('.group-row:has-text("Ambient") .slider', 0.3, 0.9);
+  await pause(1500);
   return start;
 }
