@@ -272,6 +272,7 @@ export interface UpdateState {
 export interface Snapshot {
   devices: DeviceSnapshot[];
   groups: DeviceGroup[];
+  plan: RoomPlan;
   settings: AppSettings;
   version: string;
   update: UpdateState;
@@ -297,6 +298,11 @@ export interface WledBridge {
   createGroup(group: { name: string; members: string[] }): Promise<CommandResult & { id?: string }>;
   updateGroup(id: string, group: { name: string; members: string[] }): Promise<CommandResult>;
   removeGroup(id: string): Promise<void>;
+  /** Raumplan speichern; Antwort: der geprüft gespeicherte Plan. */
+  setPlan(plan: RoomPlan): Promise<RoomPlan>;
+  onPlan(cb: (plan: RoomPlan) => void): () => void;
+  /** Raumplan sichtbar: alle platzierten Geräte schicken Live-Bilder. */
+  setPlanLive(on: boolean): void;
   /** Look auf Geräte übertragen; Ergebnis je Gerät. */
   copyLook(look: Look, ids: string[]): Promise<CopyResult[]>;
   /** Schnellfarbe, Effekt oder Palette „für alle“; Ergebnis je Gerät. */

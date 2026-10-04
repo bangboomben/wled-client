@@ -1,7 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { resolveLanguage, setLanguage } from '../../shared/i18n';
 import { applyStatePatch } from '../../shared/merge';
-import type { AppSettings, DeviceGroup, DeviceSnapshot, DeviceStatic, PalxEntry, ScanProgress, UpdateState, WledBridge } from '../../shared/types';
+import { emptyPlan } from '../../shared/plan';
+import type { AppSettings, DeviceGroup, DeviceSnapshot, DeviceStatic, PalxEntry, RoomPlan, ScanProgress, UpdateState, WledBridge } from '../../shared/types';
 
 declare global {
   interface Window {
@@ -16,6 +17,7 @@ type Listener = () => void;
 class AppStore {
   devices: DeviceSnapshot[] = [];
   groups: DeviceGroup[] = [];
+  plan: RoomPlan = emptyPlan();
   settings: AppSettings = {
     closeToTray: true,
     startWithWindows: false,
@@ -36,6 +38,7 @@ class AppStore {
     const snap = await wled.getSnapshot();
     this.devices = snap.devices;
     this.groups = snap.groups;
+    this.plan = snap.plan;
     this.settings = snap.settings;
     this.applyLanguage();
     this.version = snap.version;
@@ -47,6 +50,10 @@ class AppStore {
     });
     wled.onGroups((groups) => {
       this.groups = groups;
+      this.emit();
+    });
+    wled.onPlan((plan) => {
+      this.plan = plan;
       this.emit();
     });
     wled.onDevice((d) => {
@@ -121,6 +128,7 @@ export function sendAll(patch: Record<string, unknown>): void {
 
 export const useDevices = () => useSyncExternalStore(store.subscribe, () => store.devices);
 export const useGroups = () => useSyncExternalStore(store.subscribe, () => store.groups);
+export const usePlan = () => useSyncExternalStore(store.subscribe, () => store.plan);
 export const useSettings = () => useSyncExternalStore(store.subscribe, () => store.settings);
 export const useScan = () => useSyncExternalStore(store.subscribe, () => store.scan);
 export const useReady = () => useSyncExternalStore(store.subscribe, () => store.ready);

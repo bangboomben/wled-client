@@ -191,8 +191,9 @@ export class DeviceManager extends EventEmitter {
     return this.applyEach(ids, (state, st) => actionPatch(action, state, st));
   }
 
-  setLive(id: string | null): void {
-    for (const conn of this.all()) conn.setLive(conn.id === id);
+  setLive(ids: readonly string[]): void {
+    const on = new Set(ids);
+    for (const conn of this.all()) conn.setLive(on.has(conn.id));
   }
 
   stopAll(): void {

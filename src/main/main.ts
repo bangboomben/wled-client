@@ -17,11 +17,13 @@ import path from 'node:path';
 import { key, resolveLanguage, setLanguage, t } from '../shared/i18n';
 import { groupMembers, groupView, powerTargets } from '../shared/groups';
 import { cleanAction, cleanLook } from '../shared/look';
-import type { AppSettings, DeviceGroup, DevicePage, DeviceSnapshot, ScanResult, UpdateState } from '../shared/types';
+import type { AppSettings, DeviceGroup, DevicePage, DeviceSnapshot, RoomPlan, ScanResult, UpdateState } from '../shared/types';
 import { DeviceManager } from './devices';
 import { Scanner, localSubnets } from './discovery';
 import { GroupManager } from './groups';
 import { LinkRunner } from './links';
+import { liveIds } from './live';
+import { PlanManager } from './plan';
 import { Store } from './store';
 import { cleanSettings } from './store-data';
 import { Updater } from './updater';
@@ -70,6 +72,7 @@ let store: Store;
 let manager: DeviceManager;
 let links: LinkRunner | undefined;
 let groups: GroupManager;
+let roomPlan: PlanManager;
 let updater: Updater;
 const scanner = new Scanner();
 let mainWin: BrowserWindow | null = null;
@@ -79,6 +82,7 @@ const pageWindows = new Map<string, BrowserWindow>();
 let quitting = false;
 let lastFlyoutHide = 0;
 let liveRequest: string | null = null;
+let planLive = false;
 let trayTimer: NodeJS.Timeout | null = null;
 
 const theme = () => (nativeTheme.shouldUseDarkColors ? THEME.dark : THEME.light);
@@ -169,7 +173,9 @@ function showTrayHintOnce(): void {
 
 function updateLive(): void {
   const visible = !!mainWin && mainWin.isVisible() && !mainWin.isMinimized();
-  manager.setLive(visible && store.getSettings().liveView ? liveRequest : null);
+  manager.setLive(
+    liveIds({ visible, liveView: store.getSettings().liveView, device: liveRequest, plan: planLive, placed: roomPlan.placedIds() }),
+  );
 }
 
 // ------------------------------------------------------------------ Schnellzugriff (Tray)
@@ -452,6 +458,7 @@ function registerIpc(): void {
   ipcMain.handle('snapshot', () => ({
     devices: manager.list(),
     groups: groups.list(),
+    plan: roomPlan.get(),
     settings: store.getSettings(),
     version: app.getVersion(),
     update: updater.state,
@@ -493,6 +500,11 @@ function registerIpc(): void {
   );
   ipcMain.handle('group-remove', (_e, id: unknown) => {
     if (isId(id)) groups.remove(id);
+  });
+  ipcMain.handle('plan-set', (_e, raw: unknown) => roomPlan.set(raw));
+  ipcMain.on('plan-live', (_e, on: unknown) => {
+    planLive = on === true;
+    updateLive();
   });
   ipcMain.handle('copy-look', (_e, look: unknown, ids: unknown) => {
     const clean = cleanLook(look);
@@ -598,14 +610,20 @@ if (!app.requestSingleInstanceLock()) {
     manager = new DeviceManager(store);
     groups = new GroupManager(store, () => manager.list().map((d) => d.id));
     groups.on('groups', (list: DeviceGroup[]) => broadcast('groups', list));
+    roomPlan = new PlanManager(store, () => manager.list().map((d) => d.id));
+    roomPlan.on('plan', (p: RoomPlan) => {
+      broadcast('plan', p);
+      updateLive();
+    });
     manager.on('device', (snap: DeviceSnapshot) => {
       broadcast('device', snap);
       updateTray();
     });
     manager.on('list', (list: DeviceSnapshot[]) => {
       broadcast('devices', list);
-      // Entfernte Geräte fallen aus allen Gruppen.
+      // Entfernte Geräte fallen aus allen Gruppen und aus dem Raumplan.
       groups.pruneDevices(list.map((d) => d.id));
+      roomPlan.pruneDevices(list.map((d) => d.id));
       updateTray();
     });
     manager.on('toast', (msg: string) => mainWin?.webContents.send('toast', msg));
