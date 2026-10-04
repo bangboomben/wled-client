@@ -2409,3 +2409,63 @@ polyline.plan-hit {
 .plan-panel select {
   width: 100%;
 }
+
+.plan-side {
+  width: 220px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+}
+
+.plan-side-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: grab;
+}
+
+.plan-side-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.plan-help {
+  margin-top: 8px;
+}
+
+.plan-name-input {
+  position: absolute;
+  z-index: 6;
+  width: 200px;
+}
+
+.plan-menu {
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+}
+
+.plan-menu button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-menu button:hover {
+  background: var(--panel-2);
+}

@@ -3,7 +3,7 @@ import { t } from '../shared/i18n';
 import { DeviceView } from './components/DeviceView';
 import { GroupView } from './components/GroupView';
 import { AddDeviceDialog, AppSettingsDialog, DeviceEditDialog, GroupDialog, ScanProgressBar } from './components/dialogs';
-import { Toasts } from './components/controls';
+import { Modal, Toasts } from './components/controls';
 import { Icon, Logo } from './components/Icon';
 import { RoomPlan, type PlanGuard } from './components/RoomPlan';
 import { Sidebar } from './components/Sidebar';
@@ -55,22 +55,33 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | undefined>(() => store.settings.selectedId);
   const [groupId, setGroupId] = useState<string | undefined>(() => store.settings.selectedGroupId || undefined);
   const [planOpen, setPlanOpen] = useState<boolean>(() => !!store.settings.planOpen);
-  // Rückfrage vor dem Verlassen bei ungespeicherten Änderungen (Bearbeitungsmodus, Task 7)
+  // Rückfrage vor dem Verlassen bei ungespeicherten Änderungen (Bearbeitungsmodus)
   const planGuard = useRef<PlanGuard | null>(null);
+  // Für Rückfragen aus Ereignissen (Tray, Tastatur), deren Handler einmal registriert werden.
+  const planOpenRef = useRef(planOpen);
+  planOpenRef.current = planOpen;
+  const [leave, setLeave] = useState<{ go: () => void } | null>(null);
+  /** Verlässt den Raumplan erst nach Rückfrage, wenn er ungespeicherte Änderungen hat. */
+  const guarded = (go: () => void) => {
+    if (planOpenRef.current && planGuard.current?.dirty()) setLeave({ go });
+    else go();
+  };
   const [dialog, setDialog] = useState<Dialog>(null);
   const selected = devices.find((d) => d.id === selectedId) ?? devices[0];
   const selectedKey = selected?.id;
   const selectedGroup = groupId ? groups.find((g) => g.id === groupId) : undefined;
   // Ein Gerät zu wählen heißt auch, Gruppenansicht und Raumplan zu verlassen.
-  const selectDevice = (id: string) => {
-    setPlanOpen(false);
-    setGroupId(undefined);
-    setSelectedId(id);
-  };
-  const selectGroup = (id: string) => {
-    setPlanOpen(false);
-    setGroupId(id);
-  };
+  const selectDevice = (id: string) =>
+    guarded(() => {
+      setPlanOpen(false);
+      setGroupId(undefined);
+      setSelectedId(id);
+    });
+  const selectGroup = (id: string) =>
+    guarded(() => {
+      setPlanOpen(false);
+      setGroupId(id);
+    });
   const openPlan = () => {
     setGroupId(undefined);
     setPlanOpen(true);
@@ -175,6 +186,42 @@ export function App() {
       {editDevice && <DeviceEditDialog device={editDevice} onClose={() => setDialog(null)} />}
       {dialog?.type === 'settings' && <AppSettingsDialog onClose={() => setDialog(null)} />}
       {groupDialogOpen && <GroupDialog group={editGroup} devices={devices} onClose={() => setDialog(null)} />}
+      {leave && (
+        <Modal
+          title={t('Änderungen speichern?')}
+          width={420}
+          onClose={() => setLeave(null)}
+          footer={
+            <>
+              <button className="btn ghost" onClick={() => setLeave(null)}>
+                {t('Abbrechen')}
+              </button>
+              <button
+                className="btn"
+                onClick={() => {
+                  planGuard.current?.discard();
+                  setLeave(null);
+                  leave.go();
+                }}
+              >
+                {t('Verwerfen')}
+              </button>
+              <button
+                className="btn primary"
+                onClick={async () => {
+                  await planGuard.current?.save();
+                  setLeave(null);
+                  leave.go();
+                }}
+              >
+                {t('Speichern')}
+              </button>
+            </>
+          }
+        >
+          <p>{t('Der Raumplan hat ungespeicherte Änderungen.')}</p>
+        </Modal>
+      )}
       <Toasts />
     </div>
   );

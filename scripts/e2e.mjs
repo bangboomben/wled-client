@@ -1159,6 +1159,119 @@ await step('Raumplan: Offline-Gerät hat gestrichelte Kontur und „offline“, 
   }
 });
 
+/** Bildschirmpunkt (Viewport) zu Rastereinheiten des Plans, aus den Daten am SVG. */
+const planPx = (w, ux, uy) =>
+  w.evaluate(
+    ([x, y]) => {
+      const s = document.querySelector('.plan-svg');
+      const r = s.getBoundingClientRect();
+      const k = Number(s.dataset.scale);
+      return [r.left + x * k + Number(s.dataset.ox), r.top + y * k + Number(s.dataset.oy)];
+    },
+    [ux, uy],
+  );
+
+await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Gerät', async () => {
+  const dir = planProfile();
+  const planFile = path.join(dir, 'plan.json');
+  const saved = () => {
+    try {
+      return JSON.parse(readFileSync(planFile, 'utf8'));
+    } catch {
+      return null;
+    }
+  };
+  const pa = await launch(dir);
+  try {
+    const w = await mainWindow(pa);
+    await w.waitForSelector('.plan-view .empty', { timeout: 15000 });
+    await w.click('.plan-edit-btn');
+    await w.waitForSelector('.plan-side');
+    await w.waitForFunction(() => document.querySelectorAll('.plan-side-item').length === 3);
+    // Raum aufziehen und benennen
+    await w.click('.plan-room-btn');
+    const a = await planPx(w, 1, 1);
+    const b = await planPx(w, 15, 10);
+    await w.mouse.move(a[0], a[1]);
+    await w.mouse.down();
+    await w.mouse.move(b[0], b[1], { steps: 6 });
+    await w.mouse.up();
+    await w.fill('.plan-name-input', 'Büro');
+    await w.keyboard.press('Enter');
+    await w.waitForSelector('.plan-room-name:has-text("Büro")');
+    // Desk als Linie mit einem Knick
+    await w.click('.plan-side-item:has-text("Mock Desk")');
+    for (const [ux, uy] of [[2, 2], [12, 2]]) {
+      const p = await planPx(w, ux, uy);
+      await w.mouse.click(p[0], p[1]);
+    }
+    const end = await planPx(w, 12, 8);
+    await w.mouse.dblclick(end[0], end[1]);
+    // Bulb als Punkt, Matrix als Fläche
+    await w.click('.plan-side-item:has-text("Mock Bulb")');
+    const pb = await planPx(w, 6, 7);
+    await w.mouse.click(pb[0], pb[1]);
+    await w.click('.plan-side-item:has-text("Mock Matrix")');
+    const pm = await planPx(w, 18, 5);
+    await w.mouse.click(pm[0], pm[1]);
+    await w.waitForFunction(() => document.querySelectorAll('.plan-side-item').length === 0);
+    await w.click('.plan-done-btn');
+    await waitFor(() => saved()?.items?.length === 3, 'plan.json mit drei Geräten', 6000);
+    const plan = saved();
+    expect(JSON.stringify(plan.rooms) === JSON.stringify([{ id: plan.rooms[0]?.id, name: 'Büro', x: 1, y: 1, w: 14, h: 9 }]), `Raum: ${JSON.stringify(plan.rooms)}`);
+    const byId = Object.fromEntries(plan.items.map((i) => [i.deviceId, i]));
+    expect(JSON.stringify(byId['dev-desk']) === JSON.stringify({ deviceId: 'dev-desk', shape: 'line', points: [[2, 2], [12, 2], [12, 8]], reversed: false }), `Desk: ${JSON.stringify(byId['dev-desk'])}`);
+    expect(JSON.stringify(byId['dev-bulb']) === JSON.stringify({ deviceId: 'dev-bulb', shape: 'point', at: [6, 7] }), `Bulb: ${JSON.stringify(byId['dev-bulb'])}`);
+    expect(JSON.stringify(byId['dev-matrix']) === JSON.stringify({ deviceId: 'dev-matrix', shape: 'area', rect: { x: 14, y: 3, w: 8, h: 4 } }), `Matrix: ${JSON.stringify(byId['dev-matrix'])}`);
+    // Verwerfen: Raum verschieben und verwerfen → Datei und Anzeige unverändert
+    const before = JSON.stringify(saved());
+    await w.click('.plan-edit-btn');
+    const r1 = await planPx(w, 8, 9.5);
+    const r2 = await planPx(w, 10, 9.5);
+    await w.mouse.move(r1[0], r1[1]);
+    await w.mouse.down();
+    await w.mouse.move(r2[0], r2[1], { steps: 4 });
+    await w.mouse.up();
+    await w.click('.plan-discard-btn');
+    await w.waitForSelector('.plan-side', { state: 'detached' });
+    await w.waitForTimeout(500);
+    expect(JSON.stringify(saved()) === before, 'Verwerfen hat gespeichert');
+    // Rückgängig: Desk wählen (an der ersten LED — die Mitte des Umrisses einer L-Linie liegt nicht auf ihr), Entf, Strg+Z
+    await w.click('.plan-edit-btn');
+    const deskAt = await w.evaluate(() => {
+      const el = document.querySelector('.plan-item[data-device="dev-desk"]');
+      const r = document.querySelector('.plan-svg').getBoundingClientRect();
+      return [r.left + Number(el.dataset.x), r.top + Number(el.dataset.y)];
+    });
+    await w.mouse.click(deskAt[0], deskAt[1]);
+    await w.keyboard.press('Delete');
+    await w.waitForFunction(() => !document.querySelector('.plan-item[data-device="dev-desk"]'));
+    await w.keyboard.press('Control+z');
+    await w.waitForSelector('.plan-item[data-device="dev-desk"]');
+    // Rückfrage beim Verlassen mit Änderungen
+    await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
+    await w.keyboard.press('ArrowRight');
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.modal:has-text("Änderungen speichern?")');
+    await w.click('.modal .btn.ghost');
+    await w.waitForSelector('.modal', { state: 'detached' });
+    expect(await w.locator('.plan-side').count() === 1, 'Abbrechen hat den Plan verlassen');
+    await w.keyboard.press('Control+1');
+    await w.click('.modal .btn:has-text("Verwerfen")');
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    expect(JSON.stringify(saved()) === before, 'Verwerfen über die Rückfrage hat gespeichert');
+    // Gerät löschen → verschwindet aus dem Plan
+    await w.evaluate(() => window.wled.removeDevice('dev-bulb'));
+    await waitFor(() => saved()?.items?.length === 2, 'Bulb aus plan.json entfernt', 6000);
+    await w.click('.plan-row');
+    await w.waitForFunction(() => document.querySelectorAll('.plan-item').length === 2);
+    expect(await closeApp(pa, 'Raumplan zeichnen'), 'App reagiert nicht auf Beenden');
+  } finally {
+    await closeApp(pa, 'Raumplan zeichnen');
+    removeDir(dir);
+  }
+});
+
 await step('Keine unerwarteten Fehler im Hauptprozess', async () => {
   expect(!mainErrors.length, `${mainErrors.length}× – ${mainErrors[0]}`);
 });
