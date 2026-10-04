@@ -199,10 +199,21 @@ function planProfile(
   return dir;
 }
 
-/** Hauptfenster einer gestarteten App, sobald beide Fenster da sind. */
+// Fenstergröße der Raumplan-Schritte: so viel lässt der Bildschirm des CI-Runners (1024×768 mit Taskleiste) übrig.
+// Die Schritte klicken auf Planpunkte; in derselben Größe landen die Klicks lokal wie in der CI.
+const PLAN_WINDOW = [1024, 720];
+
+/** Hauptfenster einer gestarteten App, sobald beide Fenster da sind, in der Größe PLAN_WINDOW. */
 async function mainWindow(electronApp) {
   await waitFor(async () => electronApp.windows().length >= 2, 'beide Fenster', 15000);
-  return electronApp.windows().find((w) => w.url().includes('index.html'));
+  const w = electronApp.windows().find((w) => w.url().includes('index.html'));
+  await electronApp.evaluate(({ BrowserWindow }, [width, height]) => {
+    BrowserWindow.getAllWindows()
+      .find((b) => b.webContents.getURL().includes('index.html'))
+      .setContentSize(width, height);
+  }, PLAN_WINDOW);
+  await w.waitForFunction(([width, height]) => innerWidth === width && innerHeight === height, PLAN_WINDOW, { timeout: 5000 });
+  return w;
 }
 
 /**
@@ -1172,17 +1183,25 @@ await step('Raumplan: Offline-Gerät hat gestrichelte Kontur und „offline“, 
   }
 });
 
-/** Bildschirmpunkt (Viewport) zu Rastereinheiten des Plans, aus den Daten am SVG. */
-const planPx = (w, ux, uy) =>
-  w.evaluate(
+/**
+ * Bildschirmpunkt (Viewport) zu Rastereinheiten des Plans, aus den Daten am SVG. Ein Punkt außerhalb der Bühne scheitert
+ * sofort: Ein Klick dorthin ginge ins Leere, und der Schritt liefe erst viel später in eine Zeitüberschreitung.
+ */
+const planPx = async (w, ux, uy) => {
+  const [px, py, inside] = await w.evaluate(
     ([x, y]) => {
       const s = document.querySelector('.plan-svg');
       const r = s.getBoundingClientRect();
       const k = Number(s.dataset.scale);
-      return [r.left + x * k + Number(s.dataset.ox), r.top + y * k + Number(s.dataset.oy)];
+      const px = r.left + x * k + Number(s.dataset.ox);
+      const py = r.top + y * k + Number(s.dataset.oy);
+      return [px, py, px >= r.left && px <= r.right && py >= r.top && py <= r.bottom];
     },
     [ux, uy],
   );
+  expect(inside, `Planpunkt (${ux}, ${uy}) liegt außerhalb der Bühne`);
+  return [px, py];
+};
 
 /**
  * Wartet, bis der Ausschnitt des Plans nach dem Wechsel in den Bearbeitungsmodus steht: Die Seitenliste verkleinert die
@@ -1219,10 +1238,10 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     await w.click('.plan-edit-btn');
     await planSettled(w);
     await w.waitForFunction(() => document.querySelectorAll('.plan-side-item').length === 3);
-    // Raum aufziehen und benennen
+    // Raum aufziehen und benennen. Der leere Plan zeigt in PLAN_WINDOW nur bis etwa Einheit 14 in der Breite.
     await w.click('.plan-room-btn');
     const a = await planPx(w, 1, 1);
-    const b = await planPx(w, 15, 10);
+    const b = await planPx(w, 13, 10);
     await w.mouse.move(a[0], a[1]);
     await w.mouse.down();
     await w.mouse.move(b[0], b[1], { steps: 6 });
@@ -1242,22 +1261,22 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     }
     const end = await planPx(w, 12, 8);
     await w.mouse.dblclick(end[0], end[1]);
-    // Bulb als Punkt, Matrix als Fläche
+    // Bulb als Punkt, Matrix als Fläche (unter dem Raum, rechts bündig mit ihm)
     await w.click('.plan-side-item:has-text("Mock Bulb")');
     const pb = await planPx(w, 6, 7);
     await w.mouse.click(pb[0], pb[1]);
     await w.click('.plan-side-item:has-text("Mock Matrix")');
-    const pm = await planPx(w, 18, 5);
+    const pm = await planPx(w, 9, 13);
     await w.mouse.click(pm[0], pm[1]);
     await w.waitForFunction(() => document.querySelectorAll('.plan-side-item').length === 0);
     await w.click('.plan-done-btn');
     await waitFor(() => saved()?.items?.length === 3, 'plan.json mit drei Geräten', 6000);
     const plan = saved();
-    expect(JSON.stringify(plan.rooms) === JSON.stringify([{ id: plan.rooms[0]?.id, name: 'Büro', x: 1, y: 1, w: 14, h: 9 }]), `Raum: ${JSON.stringify(plan.rooms)}`);
+    expect(JSON.stringify(plan.rooms) === JSON.stringify([{ id: plan.rooms[0]?.id, name: 'Büro', x: 1, y: 1, w: 12, h: 9 }]), `Raum: ${JSON.stringify(plan.rooms)}`);
     const byId = Object.fromEntries(plan.items.map((i) => [i.deviceId, i]));
     expect(JSON.stringify(byId['dev-desk']) === JSON.stringify({ deviceId: 'dev-desk', shape: 'line', points: [[2, 2], [12, 2], [12, 8]], reversed: false }), `Desk: ${JSON.stringify(byId['dev-desk'])}`);
     expect(JSON.stringify(byId['dev-bulb']) === JSON.stringify({ deviceId: 'dev-bulb', shape: 'point', at: [6, 7] }), `Bulb: ${JSON.stringify(byId['dev-bulb'])}`);
-    expect(JSON.stringify(byId['dev-matrix']) === JSON.stringify({ deviceId: 'dev-matrix', shape: 'area', rect: { x: 14, y: 3, w: 8, h: 4 } }), `Matrix: ${JSON.stringify(byId['dev-matrix'])}`);
+    expect(JSON.stringify(byId['dev-matrix']) === JSON.stringify({ deviceId: 'dev-matrix', shape: 'area', rect: { x: 5, y: 11, w: 8, h: 4 } }), `Matrix: ${JSON.stringify(byId['dev-matrix'])}`);
     // Verwerfen: Raum verschieben und verwerfen → Datei und Anzeige unverändert
     const before = JSON.stringify(saved());
     await w.click('.plan-edit-btn');
@@ -1374,7 +1393,7 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     await w.click('.plan-edit-btn');
     await planSettled(w);
     // Ziehen aus „Noch nicht im Plan“: Matrix aus dem Plan nehmen und aus der Liste an dieselbe Stelle ziehen
-    const ma = await planPx(w, 18, 5);
+    const ma = await planPx(w, 9, 13);
     await w.mouse.click(ma[0], ma[1], { button: 'right' });
     await w.click('.plan-menu button:has-text("Aus dem Plan entfernen")');
     await w.waitForFunction(() => !document.querySelector('.plan-item[data-device="dev-matrix"]'));
@@ -1384,8 +1403,8 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     const dropped = await itemAt('dev-matrix');
     expect(Math.abs(dropped[0] - ma[0]) < 3 && Math.abs(dropped[1] - ma[1]) < 3, `Die Matrix liegt nach dem Ziehen bei ${dropped.map(Math.round)}, nicht bei ${ma.map(Math.round)}`);
     expect((await w.locator('.plan-side-item:has-text("Mock Matrix")').count()) === 0, 'Die Matrix steht nach dem Ziehen noch in der Liste');
-    // Das Kontextmenü bleibt in der Bühne, auch am rechten Rand (die Matrix reicht bis Einheit 22)
-    const mx = await planPx(w, 21.5, 6.5);
+    // Das Kontextmenü bleibt in der Bühne, auch am rechten Rand (die Matrix reicht wie der Raum bis Einheit 13)
+    const mx = await planPx(w, 12.5, 14.5);
     await w.mouse.click(mx[0], mx[1], { button: 'right' });
     await w.waitForSelector('.plan-menu');
     const inStage = await w.evaluate(() => {
@@ -1410,7 +1429,7 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     await w.waitForSelector('.plan-side', { state: 'detached' });
     // Die hineingezogene Matrix liegt genau dort, wo sie vorher lag (Einrasten aufs Raster, wie beim Anklicken)
     const matrixRect = JSON.stringify(saved().items.find((i) => i.deviceId === 'dev-matrix')?.rect);
-    expect(matrixRect === JSON.stringify({ x: 14, y: 3, w: 8, h: 4 }), `Matrix nach dem Ziehen: ${matrixRect}`);
+    expect(matrixRect === JSON.stringify({ x: 5, y: 11, w: 8, h: 4 }), `Matrix nach dem Ziehen: ${matrixRect}`);
     // Ohne Bearbeiten: ein gelöschtes Gerät verschwindet ebenfalls aus dem Plan
     await w.keyboard.press('Control+1');
     await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
