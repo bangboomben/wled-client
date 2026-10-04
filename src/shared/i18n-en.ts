@@ -431,4 +431,8 @@ export const EN: Record<string, string> = {
   '{name}, verbindet': '{name}, connecting',
   '{name}, aus': '{name}, off',
   '{name}, an, {n} %': '{name}, on, {n} %',
+  'Raumplan': 'Room plan',
+  'Räume und Lampen einzeichnen': 'Draw rooms and lights',
+  'Räume als Kästen zeichnen, Lampen hineinlegen — dann leuchten sie hier live.': 'Draw rooms as boxes and put your lights in — then they glow here live.',
+  'Effekt …': 'Effect …',
 };

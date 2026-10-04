@@ -36,6 +36,10 @@ const PATHS: Record<string, string> = {
   reboot: 'M12 3v4 M6.4 6.6a8 8 0 1 0 11.2 0',
   upload: 'M12 16V4 M7 9l5-5 5 5 M4 20h16',
   copy: 'M9 9h11v11H9z M5 15H4V4h11v1',
+  map: 'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z M9 3v15 M15 6v15',
+  strip: 'M3 17l6-6 4 4 8-8',
+  matrix: 'M4 4h16v16H4z M4 9.3h16 M4 14.7h16 M9.3 4v16 M14.7 4v16',
+  undo: 'M9 14L4 9l5-5 M4 9h10a6 6 0 0 1 0 12h-3',
 };
 
 export function Icon({ name, size = 18, style, className }: { name: string; size?: number; style?: CSSProperties; className?: string }) {

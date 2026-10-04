@@ -160,6 +160,8 @@ export function Sidebar({
   onSettings,
   onEdit,
   onEditGroup,
+  planOpen,
+  onOpenPlan,
 }: {
   devices: DeviceSnapshot[];
   groups: DeviceGroup[];
@@ -172,6 +174,8 @@ export function Sidebar({
   onSettings: () => void;
   onEdit: (id: string) => void;
   onEditGroup: (id: string) => void;
+  planOpen: boolean;
+  onOpenPlan: () => void;
 }) {
   const anyOn = devices.some((d) => d.status === 'online' && d.state?.on);
 
@@ -191,6 +195,21 @@ export function Sidebar({
         <span className="app-title">WLED Client</span>
       </div>
       <div className="device-list">
+        {devices.length > 0 && (
+          <div
+            className={`plan-row${planOpen ? ' active' : ''}`}
+            role="button"
+            tabIndex={0}
+            aria-current={planOpen || undefined}
+            onClick={onOpenPlan}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onOpenPlan();
+            }}
+          >
+            <Icon name="map" size={16} className="group-icon" />
+            <span className="device-name">{t('Raumplan')}</span>
+          </div>
+        )}
         {groups.length > 0 && (
           <>
             <div className="list-heading">{t('Gruppen')}</div>

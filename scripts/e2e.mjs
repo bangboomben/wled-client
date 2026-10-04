@@ -21,6 +21,8 @@ mkdirSync(SHOTS, { recursive: true });
 
 const PORTS = { desk: 18281, bedroom: 18282, extra: 18283 };
 const MDNS_PORT = 18353;
+// Eigene Mock-Geräte für die Raumplan-Schritte: Streifen, Bulb (1 LED), Matrix 16×8
+const PLAN_PORTS = { desk: 18291, bulb: 18292, matrix: 18293 };
 const mock = spawn(
   process.execPath,
   [
@@ -155,6 +157,56 @@ async function closeApp(electronApp, label) {
 
 /** Löscht ein Testverzeichnis; Windows gibt Dateien eines eben beendeten Prozesses erst verzögert frei. */
 const removeDir = (dir) => rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+
+/** Startet die Mock-Geräte für den Raumplan in einem eigenen Prozess (ohne mDNS). */
+async function startPlanMock() {
+  const proc = spawn(
+    process.execPath,
+    [
+      '--no-warnings',
+      'scripts/mock-wled.mjs',
+      `${PLAN_PORTS.desk}:desk:Mock Desk`,
+      `${PLAN_PORTS.bulb}:bedroom+bulb:Mock Bulb`,
+      `${PLAN_PORTS.matrix}:desk+matrix=16x8:Mock Matrix`,
+    ],
+    { stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  await new Promise((resolve) => proc.stdout.on('data', (d) => d.toString().includes(String(PLAN_PORTS.matrix)) && resolve()));
+  return proc;
+}
+
+/** Profil für die Raumplan-Schritte: drei Plan-Geräte, Live an, optional ein Plan. */
+function planProfile(plan) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'wled-client-plan-'));
+  writeFileSync(
+    path.join(dir, 'devices.json'),
+    JSON.stringify([
+      { id: 'dev-desk', host: `127.0.0.1:${PLAN_PORTS.desk}` },
+      { id: 'dev-bulb', host: `127.0.0.1:${PLAN_PORTS.bulb}` },
+      { id: 'dev-matrix', host: `127.0.0.1:${PLAN_PORTS.matrix}` },
+    ]),
+  );
+  writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ theme: 'dark', liveView: true, trayHintShown: true, language: 'de', planOpen: true }));
+  if (plan) writeFileSync(path.join(dir, 'plan.json'), JSON.stringify(plan));
+  return dir;
+}
+
+/** Hauptfenster einer gestarteten App, sobald beide Fenster da sind. */
+async function mainWindow(electronApp) {
+  await waitFor(async () => electronApp.windows().length >= 2, 'beide Fenster', 15000);
+  return electronApp.windows().find((w) => w.url().includes('index.html'));
+}
+
+/** Farbe der LED-Ebene an einem Punkt der Bühne (CSS-Pixel relativ zur Bühne): [r, g, b]. */
+const ledPixel = (w, x, y) =>
+  w.evaluate(
+    ([px, py]) => {
+      const c = document.querySelector('.plan-leds');
+      const k = c.width / c.clientWidth;
+      return [...c.getContext('2d').getImageData(Math.round(px * k), Math.round(py * k), 1, 1).data.slice(0, 3)];
+    },
+    [x, y],
+  );
 const expect = (cond, msg) => {
   if (!cond) throw new Error(msg);
 };
@@ -924,10 +976,88 @@ await step('Kaltstart per Link: App startet unsichtbar und führt den Link aus',
     removeDir(fresh);
   }
 });
+const planMock = await startPlanMock();
+const PLAN_SHOWN = {
+  version: 1,
+  rooms: [{ id: 'r1', name: 'Büro', x: 0, y: 0, w: 22, h: 12 }],
+  items: [
+    { deviceId: 'dev-desk', shape: 'line', points: [[2, 2], [14, 2], [14, 8]], reversed: false },
+    { deviceId: 'dev-bulb', shape: 'point', at: [6, 9] },
+    { deviceId: 'dev-matrix', shape: 'area', rect: { x: 16, y: 2, w: 4, h: 2 } },
+  ],
+};
+
+await step('Raumplan: Anzeige, Live-Farben, Bedienfeld, Wechsel und Neustart', async () => {
+  const dir = planProfile(PLAN_SHOWN);
+  await api(PLAN_PORTS.desk, '/json/state', { on: true, bri: 255, seg: [{ id: 0, fx: 9 }] });
+  await api(PLAN_PORTS.matrix, '/json/state', { on: true, bri: 255 });
+  await api(PLAN_PORTS.bulb, '/json/state', { on: false });
+  let pa = await launch(dir);
+  try {
+    let w = await mainWindow(pa);
+    await w.waitForSelector('.plan-view', { timeout: 15000 });
+    await w.waitForFunction(() => document.querySelectorAll('.plan-item').length === 3, null, { timeout: 15000 });
+    expect((await w.locator('.plan-room-name').textContent()) === 'Büro', 'Raumname fehlt');
+    // Formen aus dem Plan: Linie, Punkt, Fläche
+    for (const [id, shape] of [['dev-desk', 'line'], ['dev-bulb', 'point'], ['dev-matrix', 'area']]) {
+      expect(await w.locator(`.plan-item.plan-${shape}[data-device="${id}"]`).count() === 1, `${id} nicht als ${shape}`);
+    }
+    // Live: Am Anfang der Desk-Linie wechselt die Farbe (wandernder Regenbogen), statische Farben täten das nicht
+    const anchor = async (id) => {
+      const el = w.locator(`.plan-item[data-device="${id}"]`);
+      return [Number(await el.getAttribute('data-x')), Number(await el.getAttribute('data-y'))];
+    };
+    const [dx, dy] = await anchor('dev-desk');
+    let first;
+    await waitFor(async () => {
+      const p = await ledPixel(w, dx, dy);
+      if (p[0] + p[1] + p[2] < 60) return false;
+      first ??= p.join();
+      return p.join() !== first;
+    }, 'Live-Farben am Desk ändern sich', 10000);
+    const [mx, my] = await anchor('dev-matrix');
+    await waitFor(async () => (await ledPixel(w, mx, my)).reduce((a, b) => a + b, 0) > 60, 'Matrix leuchtet live', 10000);
+    // Bedienfeld am Bulb: einschalten und Effekt setzen
+    await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
+    await w.waitForSelector('.plan-panel:has-text("Mock Bulb")');
+    await w.click('.plan-panel .toggle');
+    await waitFor(async () => (await state(PLAN_PORTS.bulb)).on, 'Bulb an über das Bedienfeld');
+    const eff = await api(PLAN_PORTS.bulb, '/json/eff');
+    await w.waitForFunction(() => !document.querySelector('.plan-panel select')?.disabled);
+    await w.selectOption('.plan-panel select', 'Rainbow');
+    await waitFor(async () => (await state(PLAN_PORTS.bulb)).seg[0].fx === eff.indexOf('Rainbow'), 'Bulb-Effekt Rainbow');
+    await w.keyboard.press('Escape');
+    await w.waitForSelector('.plan-panel', { state: 'detached' });
+    // Tastatur: Fokus auf den Desk, Enter öffnet sein Bedienfeld
+    await w.focus('.plan-item[data-device="dev-desk"]');
+    await w.keyboard.press('Enter');
+    await w.waitForSelector('.plan-panel:has-text("Mock Desk")');
+    await w.keyboard.press('Escape');
+    // Strg+1 verlässt den Plan, der Eintrag in der Seitenleiste führt zurück
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.plan-view', { state: 'detached' });
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    await w.click('.plan-row');
+    await w.waitForSelector('.plan-view');
+    await w.waitForTimeout(800); // Wahl wird nach 400 ms gespeichert
+    expect(await closeApp(pa, 'Raumplan'), 'App reagiert nicht auf Beenden');
+    // Neustart: Raumplan wieder gewählt, Plan unverändert
+    pa = await launch(dir);
+    w = await mainWindow(pa);
+    await w.waitForSelector('.plan-view', { timeout: 15000 });
+    await w.waitForFunction(() => document.querySelectorAll('.plan-item').length === 3, null, { timeout: 15000 });
+    expect(await closeApp(pa, 'Raumplan Neustart'), 'App reagiert nicht auf Beenden');
+  } finally {
+    await closeApp(pa, 'Raumplan');
+    removeDir(dir);
+  }
+});
+
 await step('Keine unerwarteten Fehler im Hauptprozess', async () => {
   expect(!mainErrors.length, `${mainErrors.length}× – ${mainErrors[0]}`);
 });
 mock.kill();
+planMock.kill();
 clearTimeout(watchdog);
 
 console.log(`\n${results.join('\n')}`);

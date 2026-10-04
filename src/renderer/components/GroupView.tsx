@@ -52,7 +52,7 @@ function MemberCard({ device, st, onOpen }: { device: DeviceSnapshot; st: Device
  * Als Tastatur zählt allein ein keydown; jede angewendete oder verworfene Wahl setzt die Marke zurück,
  * eine Änderung ohne Tastendruck (z. B. aus Tests) wendet also sofort an.
  */
-function ActionSelect({
+export function ActionSelect({
   label,
   disabled,
   options,
