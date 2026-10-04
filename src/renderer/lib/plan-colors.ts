@@ -24,6 +24,9 @@ export function parseFrame(frame: Uint8Array): LiveFrame | null {
   return matrix ? { colors, w: frame[2], h: frame[3] } : { colors };
 }
 
+/** Hat das Live-Bild ein Pixelraster? Es zählen die ersten Breite × Höhe Werte; mehr Werte schaden nicht, weniger lassen kein Raster zu. */
+export const hasGrid = (f: LiveFrame | undefined): f is LiveFrame & { w: number; h: number } => !!f?.w && !!f.h && f.w * f.h <= f.colors.length;
+
 export const rgbCss = (c: Rgb) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 
 /**

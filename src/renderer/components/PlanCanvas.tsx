@@ -26,7 +26,7 @@ import {
   type PlanView,
 } from '../../shared/plan';
 import type { DeviceSnapshot, PlanItem, PlanPoint, PlanRect, RoomPlan } from '../../shared/types';
-import { parseFrame, rgbCss, staticColors, type LiveFrame, type Rgb } from '../lib/plan-colors';
+import { hasGrid, parseFrame, rgbCss, staticColors, type LiveFrame, type Rgb } from '../lib/plan-colors';
 import { changesPlan, type PlanEdit } from '../lib/plan-edit';
 import { wled } from '../lib/store';
 
@@ -232,8 +232,9 @@ function paintItem(ctx: CanvasRenderingContext2D, item: PlanItem, d: DeviceSnaps
   const [x, y] = toScreen(view, [item.rect.x, item.rect.y]);
   const w = item.rect.w * view.scale;
   const h = item.rect.h * view.scale;
-  // Pixelraster nur, wenn Breite × Höhe zur Zahl der Farben passt (parseFrame prüft das nicht)
-  if (frame?.w && frame.h && frame.w * frame.h === frame.colors.length) {
+  // Pixelraster aus den ersten Breite × Höhe Werten, wenn es so viele gibt (parseFrame prüft das nicht; bei großen
+  // Matrizen schickt WLED mehr Werte als Breite × Höhe)
+  if (hasGrid(frame)) {
     const cw = w / frame.w;
     const ch = h / frame.h;
     for (let row = 0; row < frame.h; row++) {
@@ -473,6 +474,12 @@ export function PlanCanvas({
     }
   };
 
+  // Geht die Zeigererfassung verloren (Fenster wechselt, Gerät wird abgezogen), endet der Zug ohne Wirkung
+  const onLostCapture = () => {
+    gesture.current = null;
+    setRubber(null);
+  };
+
   const onDoubleClick = (e: ReactMouseEvent<SVGSVGElement>) => {
     if (!editing) return;
     if (drawing) return onDrawEnd();
@@ -508,6 +515,7 @@ export function PlanCanvas({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onLostPointerCapture={onLostCapture}
         onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
       >

@@ -81,7 +81,7 @@ export function PlanPanel({
   const left = Math.max(8, Math.min(at[0] + 12, width - PANEL_W - 8));
   const top = Math.max(8, Math.min(at[1] + 12, height - PANEL_H - 8));
   return (
-    <div className="plan-panel" ref={ref} role="dialog" aria-label={device.name} style={{ left, top, width: PANEL_W, ...deviceAccent(device) }}>
+    <div className="plan-panel" ref={ref} tabIndex={-1} role="dialog" aria-label={device.name} style={{ left, top, width: PANEL_W, ...deviceAccent(device) }}>
       <div className="member-head">
         <DeviceDot device={device} />
         <span className="device-name">{device.name}</span>

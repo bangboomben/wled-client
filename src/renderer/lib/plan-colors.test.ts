@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeviceSnapshot, WledSegment, WledState } from '../../shared/types';
-import { parseFrame, rgbCss, staticColors } from './plan-colors';
+import { hasGrid, parseFrame, rgbCss, staticColors } from './plan-colors';
 
 const seg = (start: number, stop: number, col: number[], on = true) => ({ id: start, start, stop, on, col: [col] }) as unknown as WledSegment;
 const dev = (patch: Partial<DeviceSnapshot>, segs: WledSegment[] = [seg(0, 10, [255, 0, 0])], on = true): DeviceSnapshot => ({
@@ -27,6 +27,21 @@ describe('parseFrame', () => {
   });
   it('rgbCss', () => {
     expect(rgbCss([1, 2, 3])).toBe('rgb(1, 2, 3)');
+  });
+});
+
+describe('hasGrid', () => {
+  const colors = (n: number): Array<[number, number, number]> => Array.from({ length: n }, () => [1, 2, 3]);
+  it('Breite × Höhe passt genau oder ist kleiner als die Zahl der Werte (WLED schickt bei großen Matrizen mehr)', () => {
+    expect(hasGrid({ colors: colors(6), w: 3, h: 2 })).toBe(true);
+    expect(hasGrid({ colors: colors(9), w: 3, h: 2 })).toBe(true);
+  });
+  it('zu wenige Werte, ohne Breite oder Höhe oder ohne Matrix → kein Raster', () => {
+    expect(hasGrid({ colors: colors(5), w: 3, h: 2 })).toBe(false);
+    expect(hasGrid({ colors: colors(6), w: 0, h: 6 })).toBe(false);
+    expect(hasGrid({ colors: colors(6), w: 6, h: 0 })).toBe(false);
+    expect(hasGrid({ colors: colors(6) })).toBe(false);
+    expect(hasGrid(undefined)).toBe(false);
   });
 });
 

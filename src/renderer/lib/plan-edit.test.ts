@@ -52,6 +52,21 @@ describe('Geräte', () => {
     const t = run({ type: 'removePoint', deviceId: 'a', index: 1 }, { type: 'removePoint', deviceId: 'a', index: 0 });
     expect((item(t, 'a') as typeof line).points).toEqual([[0, 0], [10, 10]]);
   });
+  it('Knickpunkt nicht auf einen Nachbarn einfügen (doppelte Ecke)', () => {
+    const same: PlanEdit[] = [
+      { type: 'insertPoint', deviceId: 'a', after: 0, at: [0, 0] },
+      { type: 'insertPoint', deviceId: 'a', after: 0, at: [10, 0] },
+      { type: 'insertPoint', deviceId: 'a', after: 1, at: [10, 0] },
+      { type: 'insertPoint', deviceId: 'a', after: 1, at: [10, 10] },
+    ];
+    for (const e of same) {
+      const s = run(e);
+      expect(s.plan).toBe(base);
+      expect(s.undo).toEqual([]);
+    }
+    // Ein anderer Punkt zwischen denselben Nachbarn geht weiterhin
+    expect((item(run({ type: 'insertPoint', deviceId: 'a', after: 1, at: [10, 5] }), 'a') as typeof line).points).toEqual([[0, 0], [10, 0], [10, 5], [10, 10]]);
+  });
   it('umkehren nur bei Linien', () => {
     expect(item(run({ type: 'reverse', deviceId: 'a' }), 'a')).toEqual({ ...line, reversed: true });
     expect(run({ type: 'reverse', deviceId: 'b' }).plan).toBe(base);
@@ -70,6 +85,53 @@ describe('Geräte', () => {
   });
   it('unbekanntes Gerät → keine Änderung', () => {
     expect(run({ type: 'moveItem', deviceId: 'zz', dx: 1, dy: 1 }).plan).toBe(base);
+  });
+});
+
+describe('Koordinaten außerhalb von ±1000', () => {
+  const unchanged = (...edits: PlanEdit[]) => {
+    for (const e of edits) {
+      const s = run(e);
+      expect(s.plan).toBe(base);
+      expect(s.undo).toEqual([]);
+      expect(changesPlan(base, e)).toBe(false);
+    }
+  };
+  it('Raum: anlegen oder ändern über den Rand hinaus → keine Änderung; genau 1000 ist erlaubt', () => {
+    unchanged(
+      { type: 'addRoom', room: { id: 'r2', name: 'Hall', x: 995, y: 0, w: 10, h: 4 } },
+      { type: 'addRoom', room: { id: 'r2', name: 'Hall', x: 0, y: -1001, w: 4, h: 4 } },
+      { type: 'updateRoom', id: 'r1', changes: { x: 995 } },
+      { type: 'updateRoom', id: 'r1', changes: { y: 993 } },
+      { type: 'updateRoom', id: 'r1', changes: { w: 1001 } },
+      { type: 'updateRoom', id: 'r1', changes: { x: -1001 } },
+    );
+    expect(run({ type: 'updateRoom', id: 'r1', changes: { x: 990 } }).plan.rooms[0].x).toBe(990);
+    expect(run({ type: 'updateRoom', id: 'r1', changes: { x: -1000 } }).plan.rooms[0].x).toBe(-1000);
+  });
+  it('Gerät: verschieben, Punkt ziehen oder einfügen, Fläche vergrößern, platzieren, Form wechseln', () => {
+    unchanged(
+      { type: 'moveItem', deviceId: 'a', dx: 991, dy: 0 },
+      { type: 'moveItem', deviceId: 'b', dx: 0, dy: -1006 },
+      { type: 'moveItem', deviceId: 'c', dx: 996, dy: 0 },
+      { type: 'movePoint', deviceId: 'a', index: 1, to: [1000.1, 0] },
+      { type: 'insertPoint', deviceId: 'a', after: 0, at: [0, -1001] },
+      { type: 'resizeArea', deviceId: 'c', rect: { x: 1, y: 1, w: 1000, h: 2 } },
+      { type: 'place', item: { deviceId: 'b', shape: 'point', at: [1001, 0] } },
+      { type: 'place', item: { deviceId: 'n', shape: 'area', rect: { x: 995, y: 0, w: 8, h: 4 } } },
+    );
+    expect(item(run({ type: 'moveItem', deviceId: 'b', dx: 995, dy: 0 }), 'b')).toEqual({ ...point, at: [1000, 5] });
+    expect(item(run({ type: 'moveItem', deviceId: 'c', dx: 995, dy: 0 }), 'c')).toEqual({ ...area, rect: { x: 996, y: 1, w: 4, h: 2 } });
+  });
+  it('Form wechseln am Rand: die kurze Linie würde über 1000 hinausragen', () => {
+    const edge = startEdit({ ...base, items: [{ deviceId: 'b', shape: 'point', at: [999.5, 0] }] });
+    expect(editPlan(edge, { type: 'setShape', deviceId: 'b', shape: 'line' })).toBe(edge);
+  });
+  it('gehaltene Pfeiltaste: bleibt am Rand stehen, statt etwas aus dem Plan zu schieben', () => {
+    let s = startEdit({ ...base, items: [{ deviceId: 'b', shape: 'point', at: [995, 0] }] });
+    for (let i = 0; i < 20; i++) s = editPlan(s, { type: 'moveItem', deviceId: 'b', dx: 1, dy: 0 });
+    expect(item(s, 'b')).toEqual({ deviceId: 'b', shape: 'point', at: [1000, 0] });
+    expect(s.undo).toHaveLength(5);
   });
 });
 
