@@ -86,17 +86,22 @@ export function pointAt(points: readonly PlanPoint[], d: number): PlanPoint {
   return [last[0], last[1]];
 }
 
-/** Richtung (Einheitsvektor) der Linie an der Stelle d; ohne Länge nach rechts. */
+/**
+ * Richtung (Einheitsvektor) der Linie an der Stelle d; hinter dem Ende die des letzten Teilstücks mit Länge
+ * (auch bei doppeltem Endpunkt), ohne jede Länge nach rechts.
+ */
 export function directionAt(points: readonly PlanPoint[], d: number): PlanPoint {
   let rest = Math.max(0, d);
+  let dir: PlanPoint = [1, 0];
   for (let i = 1; i < points.length; i++) {
     const seg = dist(points[i - 1], points[i]);
-    if (seg > 0 && (rest <= seg || i === points.length - 1)) {
-      return [(points[i][0] - points[i - 1][0]) / seg, (points[i][1] - points[i - 1][1]) / seg];
+    if (seg > 0) {
+      dir = [(points[i][0] - points[i - 1][0]) / seg, (points[i][1] - points[i - 1][1]) / seg];
+      if (rest <= seg) return dir;
     }
     rest -= seg;
   }
-  return [1, 0];
+  return dir;
 }
 
 /**

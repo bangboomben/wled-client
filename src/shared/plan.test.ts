@@ -44,6 +44,8 @@ describe('snapPoint', () => {
   });
   it('Ecke vor Kante', () => {
     expect(snapPoint([9.8, 7.7], [room], false)).toEqual([10, 8]);
+    // Abstand zur Ecke ≈ 0,559 < 0,6; allein die obere Kante ergäbe [1, 0]
+    expect(snapPoint([0.55, 0.1], [room], false)).toEqual([0, 0]);
   });
   it('rastet an einer nahen Kante ein und entlang der Kante aufs Raster', () => {
     expect(snapPoint([5.3, 0.4], [room], false)).toEqual([5, 0]);
@@ -74,6 +76,10 @@ describe('Linien', () => {
   it('Richtung an der Stelle d', () => {
     expect(directionAt(L, 8)).toEqual([0, 1]);
     expect(directionAt([[0, 0], [0, 0]], 0)).toEqual([1, 0]);
+  });
+  it('Richtung bei doppeltem Endpunkt: das letzte Teilstück mit Länge', () => {
+    expect(directionAt([[0, 0], [0, 10], [0, 10]], 99)).toEqual([0, 1]);
+    expect(directionAt([[0, 0], [0, 10], [0, 10]], 10)).toEqual([0, 1]);
   });
   it('verteilt n LEDs gleichmäßig von Anfang bis Ende', () => {
     expect(ledPositions([[0, 0], [10, 0]], 3, false)).toEqual([[0, 0], [5, 0], [10, 0]]);
@@ -134,9 +140,19 @@ describe('Rechtecke', () => {
     expect(resizeRect({ x: 0, y: 0, w: 10, h: 8 }, 2, [12, 9], 2)).toEqual({ x: 0, y: 0, w: 12, h: 9 });
     expect(resizeRect({ x: 0, y: 0, w: 10, h: 8 }, 0, [9, 7], 2)).toEqual({ x: 8, y: 6, w: 2, h: 2 });
   });
+  it('resizeRect: Ecke 1 (oben rechts) und Ecke 3 (unten links), die Gegenecke bleibt', () => {
+    expect(resizeRect({ x: 0, y: 0, w: 10, h: 8 }, 1, [12, -1], 2)).toEqual({ x: 0, y: -1, w: 12, h: 9 });
+    expect(resizeRect({ x: 0, y: 0, w: 10, h: 8 }, 1, [-5, 20], 2)).toEqual({ x: 0, y: 6, w: 2, h: 2 });
+    expect(resizeRect({ x: 0, y: 0, w: 10, h: 8 }, 3, [3, 11], 2)).toEqual({ x: 3, y: 0, w: 7, h: 11 });
+    expect(resizeRect({ x: 0, y: 0, w: 10, h: 8 }, 3, [20, -4], 2)).toEqual({ x: 8, y: 0, w: 2, h: 2 });
+  });
   it('resizeKeepRatio hält das Seitenverhältnis, die gegenüberliegende Ecke bleibt', () => {
     expect(resizeKeepRatio({ x: 0, y: 0, w: 8, h: 4 }, 2, [12, 3])).toEqual({ x: 0, y: 0, w: 12, h: 6 });
     expect(resizeKeepRatio({ x: 0, y: 0, w: 8, h: 4 }, 0, [4, 3])).toEqual({ x: 4, y: 2, w: 4, h: 2 });
+  });
+  it('resizeKeepRatio: Ecke 1 (oben rechts) und Ecke 3 (unten links), die Gegenecke bleibt', () => {
+    expect(resizeKeepRatio({ x: 0, y: 0, w: 8, h: 4 }, 1, [12, 1])).toEqual({ x: 0, y: -2, w: 12, h: 6 });
+    expect(resizeKeepRatio({ x: 0, y: 0, w: 8, h: 4 }, 3, [4, 3])).toEqual({ x: 2, y: 0, w: 6, h: 3 });
   });
   it('areaForMatrix: längere Seite 8, Mitte am Punkt', () => {
     expect(areaForMatrix({ w: 16, h: 8 }, [10, 10])).toEqual({ x: 6, y: 8, w: 8, h: 4 });
@@ -154,6 +170,22 @@ describe('Ausschnitt', () => {
     expect(v.scale).toBeCloseTo(16.667, 2);
     expect(v.x).toBeCloseTo(116.667, 2);
     expect(v.y).toBeCloseTo(16.667, 2);
+  });
+  it('fitView mit Ursprung ≠ 0: Versatz um −Ursprung · Maßstab', () => {
+    const v = fitView({ x: 10, y: 5, w: 10, h: 10 }, 400, 200, 1);
+    expect(v.scale).toBeCloseTo(16.667, 2);
+    expect(v.x).toBeCloseTo(-50, 2);
+    expect(v.y).toBeCloseTo(-66.667, 2);
+    // der Ausschnitt liegt trotzdem mittig: Mitte der Grenzen (15, 10) landet in der Mitte der Fläche
+    const m = toScreen(v, [15, 10]);
+    expect(m[0]).toBeCloseTo(200, 2);
+    expect(m[1]).toBeCloseTo(100, 2);
+  });
+  it('fitView: untere Maßstabsgrenze 4', () => {
+    const v = fitView({ x: 0, y: 0, w: 200, h: 200 }, 100, 100, 1);
+    expect(v.scale).toBe(4);
+    expect(v.x).toBeCloseTo(-350, 2);
+    expect(v.y).toBeCloseTo(-350, 2);
   });
   it('fitView begrenzt den Maßstab und kommt mit leerem Plan und Größe 0 zurecht', () => {
     expect(fitView({ x: 0, y: 0, w: 0, h: 0 }, 400, 400, 1).scale).toBe(60);
