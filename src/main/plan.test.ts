@@ -8,7 +8,7 @@ function setup(initial: RoomPlan = { version: 1, rooms: [], items: [] }, ids = [
   const store: PlanStore = {
     getPlan: () => structuredClone(saved.plan),
     setPlan: (plan) => {
-      saved.plan = plan;
+      saved.plan = structuredClone(plan);
       saved.count++;
     },
   };
@@ -39,6 +39,16 @@ describe('PlanManager', () => {
     expect(saved.plan).toEqual(withAB);
     expect(saved.count).toBe(1);
     expect(events).toEqual([withAB]);
+  });
+
+  it('set mit Unbrauchbarem (null, Text) speichert und meldet einen leeren Plan', () => {
+    for (const raw of [null, 'kaputt']) {
+      const { saved, pm, events } = setup(withAB);
+      expect(pm.set(raw)).toEqual({ version: 1, rooms: [], items: [] });
+      expect(saved.plan).toEqual({ version: 1, rooms: [], items: [] });
+      expect(saved.count).toBe(1);
+      expect(events).toEqual([{ version: 1, rooms: [], items: [] }]);
+    }
   });
 
   it('placedIds nennt alle platzierten Geräte', () => {

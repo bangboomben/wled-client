@@ -17,7 +17,8 @@ const SCALE_MAX = 60;
 const SCALE_EMPTY = 24;
 
 export const emptyPlan = (): RoomPlan => ({ version: 1, rooms: [], items: [] });
-export const round1 = (v: number) => Math.round(v * 10) / 10;
+/** Auf 0,1 gerundet; „+ 0“ macht aus −0 eine 0 (sonst unterscheiden toEqual und Object.is −0 von 0). */
+export const round1 = (v: number) => Math.round(v * 10) / 10 + 0;
 
 /** Form aus den LED-Daten: Matrix → Fläche, eine LED (Bulb, einfacher RGB-Streifen) → Punkt, sonst Linie. */
 export function shapeFor(info: WledInfo | undefined): PlanShape {

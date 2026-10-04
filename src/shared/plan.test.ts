@@ -13,6 +13,7 @@ import {
   rectFrom,
   resizeKeepRatio,
   resizeRect,
+  round1,
   segmentTicks,
   shapeFor,
   snapPoint,
@@ -23,6 +24,17 @@ import type { DeviceSnapshot, PlanRoom, WledInfo, WledState } from './types';
 
 const info = (leds: Partial<WledInfo['leds']>) => ({ leds: { count: 30, maxseg: 32, ...leds } }) as WledInfo;
 const room: PlanRoom = { id: 'r', name: 'Office', x: 0, y: 0, w: 10, h: 8 };
+
+describe('round1', () => {
+  it('rundet auf 0,1', () => {
+    expect(round1(1.04)).toBe(1);
+    expect(round1(2.06)).toBe(2.1);
+  });
+  it('gibt nie −0 zurück', () => {
+    expect(Object.is(round1(-0.04), 0)).toBe(true);
+    expect(Object.is(round1(-0), 0)).toBe(true);
+  });
+});
 
 describe('shapeFor', () => {
   it('Matrix → Fläche, 1 LED → Punkt, sonst Linie', () => {

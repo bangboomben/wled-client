@@ -161,7 +161,12 @@ export function cleanPlan(raw: unknown, deviceIds: readonly string[]): RoomPlan 
   return { version: 1, rooms, items };
 }
 
-/** Liest plan.json. Fehlt sie → leerer Plan. Ist sie kein JSON → als plan.json.broken beiseitelegen, leerer Plan. */
+/**
+ * Liest plan.json. Fehlt sie → leerer Plan. Ist sie kein JSON, kein Objekt oder hat sie nicht die Version 1
+ * (z. B. nach einem Wechsel auf eine ältere App-Version) → als plan.json.broken beiseitelegen, leerer Plan,
+ * damit das nächste Speichern sie nicht überschreibt. Lesen und Prüfen sind getrennt: Eine Datei wird nur
+ * beiseitegelegt, wenn schon das Lesen scheitert, nie wegen eines Fehlers in cleanPlan.
+ */
 export function readPlanFile(file: string, deviceIds: readonly string[]): RoomPlan {
   let text: string;
   try {
@@ -169,9 +174,13 @@ export function readPlanFile(file: string, deviceIds: readonly string[]): RoomPl
   } catch {
     return emptyPlan();
   }
+  let raw: unknown;
   try {
-    return cleanPlan(JSON.parse(text), deviceIds);
+    raw = JSON.parse(text);
   } catch {
+    raw = undefined;
+  }
+  if (!isObj(raw) || raw.version !== 1) {
     try {
       fs.renameSync(file, `${file}.broken`);
     } catch {
@@ -179,4 +188,5 @@ export function readPlanFile(file: string, deviceIds: readonly string[]): RoomPl
     }
     return emptyPlan();
   }
+  return cleanPlan(raw, deviceIds);
 }

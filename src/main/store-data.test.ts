@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { afterAll, describe, expect, it } from 'vitest';
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DEFAULT_SETTINGS, checkGroup, cleanDevices, cleanGroups, cleanPlan, cleanSettings, readPlanFile } from './store-data';
@@ -243,6 +243,37 @@ describe('cleanPlan', () => {
     expect(cleanPlan({ version: 1, rooms: [], items }, ids).items).toEqual([]);
   });
 
+  it('NaN und Infinity als Koordinaten fallen weg', () => {
+    const items = [
+      { deviceId: 'a', shape: 'point', at: [NaN, 1] },
+      { deviceId: 'b', shape: 'point', at: [1, Infinity] },
+      { deviceId: 'c', shape: 'line', points: [[0, 0], [-Infinity, 1]] },
+    ];
+    const rooms = [{ ...room, id: 'n1', x: NaN }, { ...room, id: 'n2', w: Infinity }];
+    expect(cleanPlan({ version: 1, rooms, items }, ids)).toEqual({ version: 1, rooms: [], items: [] });
+  });
+
+  it('Grenzwerte werden angenommen: Punkt bei ±1000, Linie mit 100 Punkten, Raum 2 × 2, Raum bis 1000', () => {
+    const line = Array.from({ length: 100 }, (_, i) => [i, 0]);
+    const raw = {
+      version: 1,
+      rooms: [
+        { id: 'min', name: 'Min', x: 0, y: 0, w: 2, h: 2 },
+        { id: 'edge', name: 'Edge', x: 990, y: -1000, w: 10, h: 2 },
+      ],
+      items: [
+        { deviceId: 'a', shape: 'point', at: [1000, -1000] },
+        { deviceId: 'b', shape: 'point', at: [-1000, 1000] },
+        { deviceId: 'c', shape: 'line', points: line },
+      ],
+    };
+    const out = cleanPlan(raw, ids);
+    expect(out.rooms.map((r) => r.id)).toEqual(['min', 'edge']);
+    expect(out.items.map((i) => i.deviceId)).toEqual(['a', 'b', 'c']);
+    expect(out.items[2]).toMatchObject({ shape: 'line' });
+    expect((out.items[2] as { points: unknown[] }).points).toHaveLength(100);
+  });
+
   it('reversed fehlt → false', () => {
     const items = [{ deviceId: 'a', shape: 'line', points: [[0, 0], [1, 0]] }];
     expect(cleanPlan({ version: 1, rooms: [], items }, ids).items[0]).toEqual({ deviceId: 'a', shape: 'line', points: [[0, 0], [1, 0]], reversed: false });
@@ -250,7 +281,15 @@ describe('cleanPlan', () => {
 });
 
 describe('readPlanFile', () => {
-  const dir = () => mkdtempSync(path.join(tmpdir(), 'wled-plan-'));
+  const dirs: string[] = [];
+  const dir = () => {
+    const d = mkdtempSync(path.join(tmpdir(), 'wled-plan-'));
+    dirs.push(d);
+    return d;
+  };
+  afterAll(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
 
   it('fehlende Datei → leerer Plan', () => {
     expect(readPlanFile(path.join(dir(), 'plan.json'), [])).toEqual({ version: 1, rooms: [], items: [] });
@@ -268,5 +307,23 @@ describe('readPlanFile', () => {
     expect(readPlanFile(file, [])).toEqual({ version: 1, rooms: [], items: [] });
     expect(existsSync(file)).toBe(false);
     expect(readFileSync(`${file}.broken`, 'utf8')).toBe('{ kaputt');
+  });
+
+  it('gültiges JSON, aber kein Plan oder andere Version → leerer Plan, Datei als plan.json.broken beiseitegelegt', () => {
+    for (const text of ['[]', 'null', '5', JSON.stringify({ version: 2, rooms: [], items: [] })]) {
+      const file = path.join(dir(), 'plan.json');
+      writeFileSync(file, text);
+      expect(readPlanFile(file, [])).toEqual({ version: 1, rooms: [], items: [] });
+      expect(existsSync(file)).toBe(false);
+      expect(readFileSync(`${file}.broken`, 'utf8')).toBe(text);
+    }
+  });
+
+  it('ein brauchbarer Plan bleibt liegen', () => {
+    const file = path.join(dir(), 'plan.json');
+    writeFileSync(file, JSON.stringify({ version: 1, rooms: [], items: [] }));
+    readPlanFile(file, []);
+    expect(existsSync(file)).toBe(true);
+    expect(existsSync(`${file}.broken`)).toBe(false);
   });
 });
