@@ -1171,6 +1171,24 @@ const planPx = (w, ux, uy) =>
     [ux, uy],
   );
 
+/**
+ * Wartet, bis der Ausschnitt des Plans nach dem Wechsel in den Bearbeitungsmodus steht: Die Seitenliste verkleinert die
+ * Bühne, und der Plan passt sich erst danach an (Maßstab und Versatz am SVG bleiben zwei Abfragen lang gleich).
+ */
+const planSettled = async (w) => {
+  await w.waitForSelector('.plan-side');
+  let last = '';
+  await waitFor(async () => {
+    const now = await w.evaluate(() => {
+      const s = document.querySelector('.plan-svg');
+      return s ? [s.dataset.scale, s.dataset.ox, s.dataset.oy, s.getAttribute('width')].join() : '';
+    });
+    const same = !!now && now === last;
+    last = now;
+    return same;
+  }, 'Ausschnitt des Plans steht', 6000);
+};
+
 await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Gerät', async () => {
   const dir = planProfile();
   const planFile = path.join(dir, 'plan.json');
@@ -1186,7 +1204,7 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     const w = await mainWindow(pa);
     await w.waitForSelector('.plan-view .empty', { timeout: 15000 });
     await w.click('.plan-edit-btn');
-    await w.waitForSelector('.plan-side');
+    await planSettled(w);
     await w.waitForFunction(() => document.querySelectorAll('.plan-side-item').length === 3);
     // Raum aufziehen und benennen
     await w.click('.plan-room-btn');
@@ -1196,6 +1214,10 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     await w.mouse.down();
     await w.mouse.move(b[0], b[1], { steps: 6 });
     await w.mouse.up();
+    // Enter ohne Namen lässt das Feld stehen (Esc verwürfe den Raum)
+    await w.waitForSelector('.plan-name-input');
+    await w.keyboard.press('Enter');
+    expect((await w.locator('.plan-name-input').count()) === 1, 'Enter ohne Namen hat das Feld geschlossen');
     await w.fill('.plan-name-input', 'Büro');
     await w.keyboard.press('Enter');
     await w.waitForSelector('.plan-room-name:has-text("Büro")');
@@ -1226,28 +1248,49 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     // Verwerfen: Raum verschieben und verwerfen → Datei und Anzeige unverändert
     const before = JSON.stringify(saved());
     await w.click('.plan-edit-btn');
+    await planSettled(w);
     const r1 = await planPx(w, 8, 9.5);
     const r2 = await planPx(w, 10, 9.5);
     await w.mouse.move(r1[0], r1[1]);
     await w.mouse.down();
     await w.mouse.move(r2[0], r2[1], { steps: 4 });
     await w.mouse.up();
+    // Der Zug hat wirklich etwas geändert (sonst verwürfe der Test nichts)
+    expect(await w.locator('.plan-undo-btn').isEnabled(), 'Der Raum-Zug hat nichts geändert');
     await w.click('.plan-discard-btn');
     await w.waitForSelector('.plan-side', { state: 'detached' });
     await w.waitForTimeout(500);
     expect(JSON.stringify(saved()) === before, 'Verwerfen hat gespeichert');
+    const itemAt = (id) =>
+      w.evaluate((id) => {
+        const el = document.querySelector(`.plan-item[data-device="${id}"]`);
+        const r = document.querySelector('.plan-svg').getBoundingClientRect();
+        return [r.left + Number(el.dataset.x), r.top + Number(el.dataset.y)];
+      }, id);
     // Rückgängig: Desk wählen (an der ersten LED — die Mitte des Umrisses einer L-Linie liegt nicht auf ihr), Entf, Strg+Z
     await w.click('.plan-edit-btn');
-    const deskAt = await w.evaluate(() => {
-      const el = document.querySelector('.plan-item[data-device="dev-desk"]');
-      const r = document.querySelector('.plan-svg').getBoundingClientRect();
-      return [r.left + Number(el.dataset.x), r.top + Number(el.dataset.y)];
-    });
+    await planSettled(w);
+    const deskAt = await itemAt('dev-desk');
     await w.mouse.click(deskAt[0], deskAt[1]);
     await w.keyboard.press('Delete');
     await w.waitForFunction(() => !document.querySelector('.plan-item[data-device="dev-desk"]'));
     await w.keyboard.press('Control+z');
     await w.waitForSelector('.plan-item[data-device="dev-desk"]');
+    // Ein Zug nach einem früheren Schritt bleibt ein eigener Schritt: Bulb schieben, dann den Raum langsam ziehen
+    // (der erste Zwischenschritt ändert nichts); ein Strg+Z nimmt nur den Zug zurück, der Bulb-Schritt bleibt
+    await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
+    await w.keyboard.press('ArrowRight');
+    const q1 = await planPx(w, 8, 9.5);
+    const q2 = await planPx(w, 10, 9.5);
+    await w.mouse.move(q1[0], q1[1]);
+    await w.mouse.down();
+    await w.mouse.move(q2[0], q2[1], { steps: 10 });
+    await w.mouse.up();
+    await w.keyboard.press('Control+z');
+    expect(await w.locator('.plan-undo-btn').isEnabled(), 'Strg+Z nach dem Zug hat auch den Schritt davor zurückgenommen');
+    // Nur Strg+Z macht rückgängig, Strg+Umschalt+Z nicht
+    await w.keyboard.press('Control+Shift+z');
+    expect(await w.locator('.plan-undo-btn').isEnabled(), 'Strg+Umschalt+Z hat rückgängig gemacht');
     // Rückfrage beim Verlassen mit Änderungen
     await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
     await w.keyboard.press('ArrowRight');
@@ -1260,11 +1303,115 @@ await step('Raumplan: zeichnen, speichern, verwerfen, Rückfrage, gelöschtes Ge
     await w.click('.modal .btn:has-text("Verwerfen")');
     await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
     expect(JSON.stringify(saved()) === before, 'Verwerfen über die Rückfrage hat gespeichert');
-    // Gerät löschen → verschwindet aus dem Plan
-    await w.evaluate(() => window.wled.removeDevice('dev-bulb'));
-    await waitFor(() => saved()?.items?.length === 2, 'Bulb aus plan.json entfernt', 6000);
+    // Rückfrage mit „Speichern“: Bulb um eine Einheit schieben, Strg+1, speichern → Geräteansicht und plan.json
+    const bulbSaved = () => JSON.stringify(saved()?.items?.find((i) => i.deviceId === 'dev-bulb'));
     await w.click('.plan-row');
-    await w.waitForFunction(() => document.querySelectorAll('.plan-item').length === 2);
+    await w.waitForSelector('.plan-view');
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    await w.click('.plan-item[data-device="dev-bulb"] .plan-hit');
+    await w.keyboard.press('ArrowRight');
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.modal:has-text("Änderungen speichern?")');
+    await w.click('.modal .btn.primary');
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    await waitFor(() => bulbSaved() === JSON.stringify({ deviceId: 'dev-bulb', shape: 'point', at: [7, 7] }), 'Bulb über die Rückfrage gespeichert', 6000);
+    // „Neu zeichnen“ zeichnet gleich eine Linie, auch bei einem Gerät mit einer LED (die Liste käme mit der Punktform zurück)
+    await w.click('.plan-row');
+    await w.waitForSelector('.plan-view');
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    const bc = await planPx(w, 7, 7);
+    await w.mouse.click(bc[0], bc[1], { button: 'right' });
+    await w.click('.plan-menu button:has-text("Als Linie darstellen")');
+    await w.mouse.click(bc[0], bc[1], { button: 'right' });
+    await w.click('.plan-menu button:has-text("Neu zeichnen")');
+    expect((await w.locator('.plan-side-item:has-text("Mock Bulb")').count()) === 0, 'Das Gerät steht beim Neuzeichnen in der Liste');
+    for (const [ux, uy] of [[3, 8], [9, 8]]) {
+      const p = await planPx(w, ux, uy);
+      await w.mouse.click(p[0], p[1]);
+    }
+    // Fertig mit unfertiger Linie (zwei Punkte) speichert sie mit
+    await w.click('.plan-done-btn');
+    await waitFor(() => bulbSaved() === JSON.stringify({ deviceId: 'dev-bulb', shape: 'line', points: [[3, 8], [9, 8]], reversed: false }), 'Bulb als neu gezeichnete Linie', 6000);
+    // Eine Linie in Arbeit zählt als Änderung: Desk aus dem Plan nehmen, neu zeichnen (zwei Punkte), Strg+1 fragt, Speichern legt sie an
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    const dk = await itemAt('dev-desk');
+    await w.mouse.click(dk[0], dk[1]);
+    await w.keyboard.press('Delete');
+    await w.click('.plan-done-btn');
+    await waitFor(() => saved()?.items?.length === 2, 'Desk aus dem Plan genommen', 6000);
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    await w.click('.plan-side-item:has-text("Mock Desk")');
+    for (const [ux, uy] of [[4, 9], [10, 9]]) {
+      const p = await planPx(w, ux, uy);
+      await w.mouse.click(p[0], p[1]);
+    }
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.modal:has-text("Änderungen speichern?")');
+    await w.click('.modal .btn.primary');
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    const deskSaved = () => JSON.stringify(saved()?.items?.find((i) => i.deviceId === 'dev-desk'));
+    await waitFor(() => deskSaved() === JSON.stringify({ deviceId: 'dev-desk', shape: 'line', points: [[4, 9], [10, 9]], reversed: false }), 'Linie in Arbeit über die Rückfrage gespeichert', 6000);
+    // Gerät in der App gelöscht, während der Plan bearbeitet wird → verschwindet sofort, auch mit Strg+Z nicht wieder da
+    await w.click('.plan-row');
+    await w.waitForSelector('.plan-view');
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    // Das Kontextmenü bleibt in der Bühne, auch am rechten Rand (die Matrix reicht bis Einheit 22)
+    const mx = await planPx(w, 21.5, 6.5);
+    await w.mouse.click(mx[0], mx[1], { button: 'right' });
+    await w.waitForSelector('.plan-menu');
+    const inStage = await w.evaluate(() => {
+      const m = document.querySelector('.plan-menu').getBoundingClientRect();
+      const st = document.querySelector('.plan-stage').getBoundingClientRect();
+      return m.left >= st.left && m.top >= st.top && m.right <= st.right && m.bottom <= st.bottom;
+    });
+    expect(inStage, 'Das Kontextmenü ragt aus der Bühne');
+    await w.keyboard.press('Escape');
+    await w.waitForSelector('.plan-menu', { state: 'detached' });
+    const bm = await planPx(w, 7, 8);
+    await w.mouse.click(bm[0], bm[1]);
+    await w.keyboard.press('ArrowDown');
+    await w.evaluate(() => window.wled.removeDevice('dev-bulb'));
+    await w.waitForFunction(() => !document.querySelector('.plan-item[data-device="dev-bulb"]'), null, { timeout: 6000 });
+    await w.keyboard.press('Control+z');
+    await w.waitForTimeout(300);
+    expect((await w.locator('.plan-item[data-device="dev-bulb"]').count()) === 0, 'Strg+Z hat das gelöschte Gerät zurückgebracht');
+    await w.click('.plan-done-btn');
+    await waitFor(() => saved()?.items?.length === 2, 'Bulb aus plan.json entfernt', 6000);
+    // Ohne Bearbeiten: ein gelöschtes Gerät verschwindet ebenfalls aus dem Plan
+    await w.keyboard.press('Control+1');
+    await w.waitForFunction(() => document.querySelector('.device-title')?.textContent === 'Mock Desk');
+    await w.evaluate(() => window.wled.removeDevice('dev-matrix'));
+    await waitFor(() => saved()?.items?.length === 1, 'Matrix aus plan.json entfernt', 6000);
+    await w.click('.plan-row');
+    await w.waitForFunction(() => document.querySelectorAll('.plan-item').length === 1);
+    // Speichern scheitert (der Hauptprozess antwortet mit einem Fehler): Meldung, die Bearbeitung bleibt offen, und
+    // auch die Rückfrage hängt danach nicht. Der Handler bleibt ersetzt — das ist das Ende des Schritts.
+    const deskLine = JSON.stringify(saved().items[0]);
+    await w.click('.plan-edit-btn');
+    await planSettled(w);
+    const d1 = await itemAt('dev-desk');
+    await w.mouse.click(d1[0], d1[1]);
+    await w.keyboard.press('ArrowRight');
+    await pa.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('plan-set');
+      ipcMain.handle('plan-set', () => {
+        throw new Error('Test');
+      });
+    });
+    await w.click('.plan-done-btn');
+    await w.waitForSelector('.toasts:has-text("Speichern fehlgeschlagen")');
+    expect((await w.locator('.plan-side').count()) === 1, 'Fertig hat trotz Fehler beim Speichern beendet');
+    await w.keyboard.press('Control+1');
+    await w.waitForSelector('.modal:has-text("Änderungen speichern?")');
+    await w.click('.modal .btn.primary');
+    await w.waitForSelector('.modal', { state: 'detached' });
+    expect((await w.locator('.plan-side').count()) === 1, 'Die Rückfrage hat trotz Fehler beim Speichern den Plan verlassen');
+    expect(JSON.stringify(saved().items[0]) === deskLine, 'Fehlgeschlagenes Speichern hat die Datei geändert');
     expect(await closeApp(pa, 'Raumplan zeichnen'), 'App reagiert nicht auf Beenden');
   } finally {
     await closeApp(pa, 'Raumplan zeichnen');

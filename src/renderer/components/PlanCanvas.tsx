@@ -27,11 +27,11 @@ import {
 } from '../../shared/plan';
 import type { DeviceSnapshot, PlanItem, PlanPoint, PlanRect, RoomPlan } from '../../shared/types';
 import { parseFrame, rgbCss, staticColors, type LiveFrame, type Rgb } from '../lib/plan-colors';
-import type { PlanEdit } from '../lib/plan-edit';
+import { changesPlan, type PlanEdit } from '../lib/plan-edit';
 import { wled } from '../lib/store';
 
 export type PlanSelection = { kind: 'room'; id: string } | { kind: 'item'; deviceId: string } | null;
-/** Linie, die gerade gezeichnet wird: Gerät und bisherige Knickpunkte. */
+/** Linie, die gerade gezeichnet wird: Gerät und bisherige Knickpunkte (beim Neuzeichnen zuerst keine). */
 export type Drawing = { deviceId: string; points: PlanPoint[] } | null;
 
 /** Klickfläche um Linien und Punkte in Pixeln. */
@@ -407,6 +407,14 @@ export function PlanCanvas({
     if (drawing) setHover(snapPoint(u, plan.rooms, e.shiftKey));
     const g = gesture.current;
     if (!g) return;
+    // Ein Zug meldet nur Änderungen, die den Plan wirklich ändern; die erste legt den Rückgängig-Schritt an, die
+    // folgenden gehören dazu. Zittern beim Anklicken (Änderung ohne Wirkung) fängt den Zug sonst nicht an und ließe
+    // die erste echte Änderung im Schritt davor aufgehen.
+    const drag = (z: { moved: boolean }, edit: PlanEdit) => {
+      if (!z.moved && !changesPlan(plan, edit)) return;
+      onEdit({ ...edit, coalesce: z.moved });
+      z.moved = true;
+    };
     switch (g.kind) {
       case 'rubber': {
         g.last = snapPoint(u, [], false);
@@ -416,13 +424,11 @@ export function PlanCanvas({
       case 'room-move': {
         const dx = Math.round(u[0] - g.start[0]);
         const dy = Math.round(u[1] - g.start[1]);
-        onEdit({ type: 'updateRoom', id: g.id, changes: { x: g.origin.x + dx, y: g.origin.y + dy }, coalesce: g.moved });
-        g.moved = true;
+        drag(g, { type: 'updateRoom', id: g.id, changes: { x: g.origin.x + dx, y: g.origin.y + dy } });
         break;
       }
       case 'room-resize': {
-        onEdit({ type: 'updateRoom', id: g.id, changes: resizeRect(g.origin, g.corner, snapPoint(u, [], false), ROOM_MIN), coalesce: g.moved });
-        g.moved = true;
+        drag(g, { type: 'updateRoom', id: g.id, changes: resizeRect(g.origin, g.corner, snapPoint(u, [], false), ROOM_MIN) });
         break;
       }
       case 'item-move': {
@@ -437,13 +443,11 @@ export function PlanCanvas({
         break;
       }
       case 'point': {
-        onEdit({ type: 'movePoint', deviceId: g.id, index: g.index, to: snapPoint(u, plan.rooms, e.shiftKey), coalesce: g.moved });
-        g.moved = true;
+        drag(g, { type: 'movePoint', deviceId: g.id, index: g.index, to: snapPoint(u, plan.rooms, e.shiftKey) });
         break;
       }
       case 'area-resize': {
-        onEdit({ type: 'resizeArea', deviceId: g.id, rect: resizeKeepRatio(g.origin, g.corner, u), coalesce: g.moved });
-        g.moved = true;
+        drag(g, { type: 'resizeArea', deviceId: g.id, rect: resizeKeepRatio(g.origin, g.corner, u) });
         break;
       }
     }

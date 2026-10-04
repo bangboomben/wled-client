@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanItem, RoomPlan } from '../../shared/types';
-import { addDrawPoint, editPlan, isDirty, startEdit, UNDO_MAX, type EditState, type PlanEdit } from './plan-edit';
+import { addDrawPoint, changesPlan, editPlan, isDirty, startEdit, UNDO_MAX, type EditState, type PlanEdit } from './plan-edit';
 
 const room = { id: 'r1', name: 'Office', x: 0, y: 0, w: 10, h: 8 };
 const line: PlanItem = { deviceId: 'a', shape: 'line', points: [[0, 0], [10, 0], [10, 10]], reversed: false };
@@ -103,6 +103,36 @@ describe('Rückgängig', () => {
     const s = run({ type: 'moveItem', deviceId: 'b', dx: 1, dy: 0 });
     expect(isDirty(s, base)).toBe(true);
     expect(isDirty(editPlan(s, { type: 'undo' }), base)).toBe(false);
+  });
+});
+
+describe('Änderungen ohne Wirkung', () => {
+  it('gleiche Werte → derselbe Stand, kein Rückgängig-Schritt', () => {
+    const start = startEdit(base);
+    const same: Array<PlanEdit> = [
+      { type: 'updateRoom', id: 'r1', changes: { x: 0, y: 0, name: 'Office' } },
+      { type: 'updateRoom', id: 'r1', changes: { name: ' Office ' } },
+      { type: 'movePoint', deviceId: 'a', index: 1, to: [10, 0] },
+      { type: 'resizeArea', deviceId: 'c', rect: { x: 1, y: 1, w: 4, h: 2 } },
+    ];
+    for (const e of same) {
+      const s = editPlan(start, e);
+      expect(s).toBe(start);
+      expect(s.undo).toEqual([]);
+    }
+  });
+  it('mit coalesce ebenso, und ein Zug nach einem früheren Schritt bleibt ein eigener Schritt', () => {
+    const first = run({ type: 'moveItem', deviceId: 'b', dx: 1, dy: 0 });
+    expect(editPlan(first, { type: 'updateRoom', id: 'r1', changes: { x: 0 }, coalesce: true })).toBe(first);
+    const second = editPlan(first, { type: 'updateRoom', id: 'r1', changes: { x: 2 } });
+    expect(second.undo).toHaveLength(2);
+    expect(editPlan(second, { type: 'undo' }).plan).toBe(first.plan);
+  });
+  it('changesPlan: ändert, gleich, ungültig', () => {
+    expect(changesPlan(base, { type: 'updateRoom', id: 'r1', changes: { x: 2 } })).toBe(true);
+    expect(changesPlan(base, { type: 'updateRoom', id: 'r1', changes: { x: 0 } })).toBe(false);
+    expect(changesPlan(base, { type: 'updateRoom', id: 'r1', changes: { w: 1 } })).toBe(false);
+    expect(changesPlan(base, { type: 'moveItem', deviceId: 'zz', dx: 1, dy: 0 })).toBe(false);
   });
 });
 

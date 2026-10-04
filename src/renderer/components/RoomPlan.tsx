@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { t } from '../../shared/i18n';
 import { areaForMatrix, fitView, planBounds, shapeFor, snapPoint, toScreen, toUnits, type PlanView } from '../../shared/plan';
-import type { DeviceSnapshot, PlanPoint, PlanRect } from '../../shared/types';
+import type { DeviceSnapshot, PlanPoint, PlanRect, RoomPlan as PlanData } from '../../shared/types';
 import { addDrawPoint, editPlan, isDirty, startEdit, type EditState, type PlanEdit } from '../lib/plan-edit';
 import { usePlan, useSettings, wled } from '../lib/store';
+import { toast } from './controls';
 import { Icon } from './Icon';
 import { PlanCanvas, type Drawing, type PlanSelection } from './PlanCanvas';
 import { PlanPanel } from './PlanPanel';
@@ -11,9 +12,14 @@ import { PlanPanel } from './PlanPanel';
 /** Was die App vor dem Verlassen des Plans fragt: ungespeicherte Änderungen speichern oder verwerfen. */
 export interface PlanGuard {
   dirty(): boolean;
-  save(): Promise<void>;
+  /** `false`, wenn das Speichern scheiterte (die Bearbeitung bleibt dann offen). */
+  save(): Promise<boolean>;
   discard(): void;
 }
+
+/** Größe des Kontextmenüs (Breite fest im Stil, Höhe bei vier Einträgen), damit es in der Bühne bleibt. */
+const MENU_W = 210;
+const MENU_H = 160;
 
 /** Größe eines Elements, nachgeführt über einen ResizeObserver. */
 function useSize(): [(el: HTMLDivElement | null) => void, { w: number; h: number }] {
@@ -84,9 +90,21 @@ export function RoomPlan({
     reset();
     setEdit(null);
   };
-  const finish = async (state: EditState | null = edit) => {
-    if (state) await wled.setPlan(state.plan);
+  // Eine Linie, die gerade gezeichnet wird und schon zwei Punkte hat, zählt mit: Sie ist eine Änderung und wird mitgespeichert.
+  const withDrawing = (s: EditState): EditState =>
+    drawing && drawing.points.length >= 2
+      ? editPlan(s, { type: 'place', item: { deviceId: drawing.deviceId, shape: 'line', points: drawing.points, reversed: false } })
+      : s;
+  /** Speichert und beendet das Bearbeiten; scheitert das Speichern, bleibt es offen. */
+  const finish = async (state: EditState | null = edit): Promise<boolean> => {
+    try {
+      if (state) await wled.setPlan(withDrawing(state).plan);
+    } catch {
+      toast(t('Speichern fehlgeschlagen'));
+      return false;
+    }
     stopEditing();
+    return true;
   };
 
   useEffect(() => {
@@ -101,10 +119,29 @@ export function RoomPlan({
   // Rückfrage der App beim Verlassen: nur während des Bearbeitens.
   useEffect(() => {
     guard.current = edit
-      ? { dirty: () => isDirty(edit, original.current), save: () => finish(edit), discard: stopEditing }
+      ? { dirty: () => isDirty(withDrawing(edit), original.current), save: () => finish(edit), discard: stopEditing }
       : null;
   });
   useEffect(() => () => void (guard.current = null), [guard]);
+
+  // Ein Gerät, das in der App gelöscht wird, verschwindet auch aus der offenen Bearbeitung: aus dem Plan, den
+  // Rückgängig-Ständen (sonst käme es mit Strg+Z zurück) und dem Stand beim Öffnen (damit "geändert" stimmt).
+  const deviceKey = devices.map((d) => d.id).join();
+  useEffect(() => {
+    const known = new Set(devices.map((d) => d.id));
+    const prune = (p: PlanData): PlanData => (p.items.every((i) => known.has(i.deviceId)) ? p : { ...p, items: p.items.filter((i) => known.has(i.deviceId)) });
+    original.current = prune(original.current);
+    setEdit((s) => {
+      if (!s) return s;
+      const plan = prune(s.plan);
+      const undo = s.undo.map(prune);
+      return plan === s.plan && undo.every((p, i) => p === s.undo[i]) ? s : { plan, undo };
+    });
+    setSelection((s) => (s?.kind === 'item' && !known.has(s.deviceId) ? null : s));
+    setPlacing((p) => (p && !known.has(p) ? null : p));
+    setDrawing((d) => (d && !known.has(d.deviceId) ? null : d));
+    setMenu((m) => (m && !known.has(m.deviceId) ? null : m));
+  }, [deviceKey]);
 
   const place = (deviceId: string, at: PlanPoint) => {
     const d = devices.find((x) => x.id === deviceId);
@@ -129,7 +166,7 @@ export function RoomPlan({
     const onKey = (e: KeyboardEvent) => {
       // Liegt ein Dialog darüber (etwa die Rückfrage beim Verlassen), gehören die Tasten ihm
       if (isTyping(e.target) || naming || document.querySelector('.modal-backdrop')) return;
-      if (e.ctrlKey && e.key.toLowerCase() === 'z') {
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         dispatch({ type: 'undo' });
         return;
@@ -173,9 +210,11 @@ export function RoomPlan({
   // Enter und das anschließende Blur dürfen den Raum nicht zweimal anlegen: Der erste Aufruf leert die Marke.
   const namingRef = useRef(naming);
   namingRef.current = naming;
-  const commitName = () => {
+  /** `enter`: Ein neuer Raum ohne Namen bleibt dabei im Feld stehen (Esc oder ein Klick daneben verwirft ihn). */
+  const commitName = (enter = false) => {
     const n = namingRef.current;
     if (!n) return;
+    if (enter && n.rect && !n.name.trim()) return;
     namingRef.current = null;
     const name = n.name.trim();
     if (name && n.rect) dispatch({ type: 'addRoom', room: { id: crypto.randomUUID(), name, ...n.rect } });
@@ -260,7 +299,8 @@ export function RoomPlan({
                 const id = e.dataTransfer.getData('text/wled-plan-device');
                 if (!editing || !id) return;
                 e.preventDefault();
-                const r = e.currentTarget.getBoundingClientRect();
+                // Gemessen an der Zeichenfläche, nicht am Rahmen der Bühne
+                const r = (e.currentTarget.querySelector('.plan-svg') ?? e.currentTarget).getBoundingClientRect();
                 place(id, snapPoint(toUnits(view, [e.clientX - r.left, e.clientY - r.top]), plan.rooms, e.shiftKey));
               }}
             >
@@ -311,17 +351,21 @@ export function RoomPlan({
                   style={{ left: namingAt()[0] + 6, top: namingAt()[1] + 6 }}
                   onChange={(e) => setNaming({ ...naming, name: e.target.value })}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitName();
+                    if (e.key === 'Enter') commitName(true);
                     if (e.key === 'Escape') {
                       setNaming(null);
                       setTool('select');
                     }
                   }}
-                  onBlur={commitName}
+                  onBlur={() => commitName()}
                 />
               )}
               {menu && menuItem && (
-                <div className="plan-menu" role="menu" style={{ left: menu.at[0], top: menu.at[1] }}>
+                <div
+                  className="plan-menu"
+                  role="menu"
+                  style={{ left: Math.max(8, Math.min(menu.at[0], size.w - MENU_W - 8)), top: Math.max(8, Math.min(menu.at[1], size.h - MENU_H - 8)) }}
+                >
                   {menuItem.shape === 'line' && (
                     <>
                       <button role="menuitem" onClick={() => menuAction(() => dispatch({ type: 'reverse', deviceId: menu.deviceId }))}>
@@ -331,8 +375,9 @@ export function RoomPlan({
                         role="menuitem"
                         onClick={() =>
                           menuAction(() => {
+                            // Gleich als Linie zeichnen (nicht über die Liste: ein Gerät mit einer LED oder eine Matrix käme sonst als Punkt bzw. Fläche zurück)
                             dispatch({ type: 'removeItem', deviceId: menu.deviceId });
-                            setPlacing(menu.deviceId);
+                            setDrawing({ deviceId: menu.deviceId, points: [] });
                           })
                         }
                       >

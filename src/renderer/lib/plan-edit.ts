@@ -108,13 +108,22 @@ function apply(plan: RoomPlan, a: PlanEdit): RoomPlan | null {
   }
 }
 
+const samePlan = (a: RoomPlan, b: RoomPlan) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Ändert die Bearbeitung den Plan wirklich? Ungültiges und Gleichbleibendes (Zittern beim Anklicken) zählen nicht. */
+export function changesPlan(plan: RoomPlan, a: PlanEdit): boolean {
+  const next = apply(plan, a);
+  return !!next && !samePlan(next, plan);
+}
+
 export function editPlan(state: EditState, a: PlanEdit | { type: 'undo' }): EditState {
   if (a.type === 'undo') {
     if (!state.undo.length) return state;
     return { plan: state.undo[state.undo.length - 1], undo: state.undo.slice(0, -1) };
   }
   const next = apply(state.plan, a);
-  if (!next) return state;
+  // Ungültig oder nichts geändert: kein neuer Stand und kein Rückgängig-Schritt
+  if (!next || samePlan(next, state.plan)) return state;
   if (a.coalesce && state.undo.length) return { plan: next, undo: state.undo };
   return { plan: next, undo: [...state.undo, state.plan].slice(-UNDO_MAX) };
 }

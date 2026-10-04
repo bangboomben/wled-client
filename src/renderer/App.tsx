@@ -209,9 +209,10 @@ export function App() {
               <button
                 className="btn primary"
                 onClick={async () => {
-                  await planGuard.current?.save();
+                  // Scheitert das Speichern (die Meldung kommt vom Plan), bleibt die Bearbeitung offen und die Rückfrage schließt
+                  const saved = await planGuard.current?.save();
                   setLeave(null);
-                  leave.go();
+                  if (saved !== false) leave.go();
                 }}
               >
                 {t('Speichern')}

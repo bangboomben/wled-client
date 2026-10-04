@@ -2379,17 +2379,13 @@ polyline.plan-hit {
   pointer-events: none;
 }
 
-.plan-panel,
-.plan-menu {
+.plan-panel {
   position: absolute;
   z-index: 5;
   background: var(--panel);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-}
-
-.plan-panel {
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -2449,10 +2445,17 @@ polyline.plan-hit {
 }
 
 .plan-menu {
+  position: absolute;
+  z-index: 5;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   padding: 4px;
   display: flex;
   flex-direction: column;
-  min-width: 200px;
+  /* feste Breite: RoomPlan hält das Menü anhand von MENU_W in der Bühne */
+  width: 210px;
 }
 
 .plan-menu button {
